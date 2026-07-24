@@ -98,8 +98,7 @@
 
 <script type="module">
 import { requireAdmin, renderAdminNav } from '../js/admin-guard.js';
-import { db, formatINR, showToast, recordPurchase, recordAdjustment, fetchStockMovements, fetchAllProductCosts, uploadFile, escapeHtml } from '../js/store.js';
-import { collection, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { formatINR, showToast, recordPurchase, recordAdjustment, fetchStockMovements, fetchAllProductCosts, fetchProducts, uploadFile, escapeHtml } from '../js/store.js';
 
 await requireAdmin();
 renderAdminNav('inventory');
@@ -107,8 +106,7 @@ renderAdminNav('inventory');
 let products = [];
 
 async function loadProducts() {
-  const snap = await getDocs(collection(db, 'products'));
-  products = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  products = await fetchProducts();
   const costs = await fetchAllProductCosts();
   const options = products.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
   document.getElementById('pu-product').innerHTML = options;
@@ -134,7 +132,7 @@ async function loadLedger(productId = '') {
   }
   tbody.innerHTML = rows.map(r => `
     <tr>
-      <td>${r.type === 'purchase' && r.purchaseDate ? r.purchaseDate : (r.createdAt?.toDate ? r.createdAt.toDate().toLocaleString('en-IN') : '-')}</td>
+      <td>${r.type === 'purchase' && r.purchaseDate ? r.purchaseDate : (r.createdAt ? new Date(r.createdAt).toLocaleString('en-IN') : '-')}</td>
       <td>${escapeHtml(r.productName) || '-'}</td>
       <td><span class="status-pill ${r.type==='purchase'?'status-paid':r.type==='sale'?'status-shipped':'status-pending'}">${r.type}</span></td>
       <td style="color:${r.qty>=0?'var(--success)':'var(--danger)'}">${r.qty>0?'+':''}${r.qty}</td>

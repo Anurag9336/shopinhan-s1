@@ -1,5 +1,5 @@
 const Razorpay = require('razorpay');
-const { initAdmin } = require('./_lib/firebase-admin');
+const { getAdminClient } = require('./_lib/supabase-admin');
 const { sanitizeItems, computeServerTotals, setCors } = require('./_lib/order-logic');
 
 module.exports = async (req, res) => {
@@ -8,11 +8,10 @@ module.exports = async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
-    const admin = initAdmin();
-    const db = admin.firestore();
+    const supabaseAdmin = getAdminClient();
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
     const cleanItems = sanitizeItems(body.items);
-    const { amount } = await computeServerTotals(db, cleanItems);
+    const { amount } = await computeServerTotals(supabaseAdmin, cleanItems);
     if (amount <= 0) throw new Error('Invalid order amount');
 
     const instance = new Razorpay({

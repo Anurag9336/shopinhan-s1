@@ -59,21 +59,18 @@
 
 <script type="module">
 import { requireAdmin, renderAdminNav } from '../js/admin-guard.js';
-import { db, formatINR, fetchAllProductCosts, fetchStockMovements, escapeHtml } from '../js/store.js';
-import { collection, getDocs, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { formatINR, fetchAllProductCosts, fetchStockMovements, fetchProducts, fetchAllOrders, escapeHtml } from '../js/store.js';
 
 await requireAdmin();
 renderAdminNav('dashboard');
 
 async function load() {
-  const productsSnap = await getDocs(collection(db, 'products'));
-  const products = productsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-  const ordersSnap = await getDocs(collection(db, 'orders'));
-  const orders = ordersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const products = await fetchProducts();
+  const orders = await fetchAllOrders();
   const pending = orders.filter(o => o.status === 'pending').length;
   const totalSales = orders.filter(o => o.status !== 'cancelled').reduce((s, o) => s + (o.amount || 0), 0);
 
-  document.querySelectorAll('#stats .stat-card .num')[0].textContent = productsSnap.size;
+  document.querySelectorAll('#stats .stat-card .num')[0].textContent = products.length;
   document.querySelectorAll('#stats .stat-card .num')[1].textContent = orders.length;
   document.querySelectorAll('#stats .stat-card .num')[2].textContent = pending;
   document.querySelectorAll('#stats .stat-card .num')[3].textContent = formatINR(totalSales);
@@ -125,17 +122,15 @@ async function load() {
     : '<tr><td colspan="3">Abhi tak koi sale nahi hui.</td></tr>';
 
   // ---- Recent orders ----
-  const recentQ = query(collection(db, 'orders'), orderBy('createdAt', 'desc'), limit(8));
-  const recentSnap = await getDocs(recentQ);
+  const recentOrders = await fetchAllOrders({ limitTo: 8 });
   const tbody = document.querySelector('#recent-orders tbody');
-  if (recentSnap.empty) {
+  if (recentOrders.length === 0) {
     tbody.innerHTML = '<tr><td colspan="4">Abhi tak koi order nahi hai.</td></tr>';
     return;
   }
-  tbody.innerHTML = recentSnap.docs.map(d => {
-    const o = d.data();
+  tbody.innerHTML = recentOrders.map((o) => {
     return `<tr>
-      <td>#${d.id.slice(0,8)}</td>
+      <td>#${o.id.slice(0,8)}</td>
       <td>${escapeHtml(o.customer?.name) || '-'}</td>
       <td>${formatINR(o.amount)}</td>
       <td><span class="status-pill status-${o.status}">${o.status}</span></td>

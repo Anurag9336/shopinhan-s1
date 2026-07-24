@@ -34,8 +34,7 @@
 
 <script type="module">
 import { requireAdmin, renderAdminNav } from '../js/admin-guard.js';
-import { db, formatINR, showToast, escapeHtml } from '../js/store.js';
-import { collection, getDocs, query, orderBy, doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { formatINR, showToast, escapeHtml, fetchAllOrders, updateOrderStatus } from '../js/store.js';
 
 await requireAdmin();
 renderAdminNav('orders');
@@ -45,9 +44,7 @@ const filterEl = document.getElementById('status-filter');
 let orders = [];
 
 async function load() {
-  const q = query(collection(db, 'orders'), orderBy('createdAt', 'desc'));
-  const snap = await getDocs(q);
-  orders = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  orders = await fetchAllOrders();
   render();
 }
 
@@ -61,7 +58,7 @@ function render() {
   tbody.innerHTML = rows.map(o => `
     <tr>
       <td>#${o.id.slice(0,8)}</td>
-      <td>${o.createdAt?.toDate ? o.createdAt.toDate().toLocaleDateString('en-IN') : '-'}</td>
+      <td>${o.createdAt ? new Date(o.createdAt).toLocaleDateString('en-IN') : '-'}</td>
       <td>${escapeHtml(o.customer?.name) || '-'}<br><span style="color:#8a93a6;font-size:12px">${escapeHtml(o.customer?.phone) || ''}</span></td>
       <td>${o.items?.map(i => `${escapeHtml(i.name)} ×${Number(i.qty)}`).join(', ')}</td>
       <td>${formatINR(o.amount)}</td>
@@ -76,7 +73,7 @@ function render() {
 
   tbody.querySelectorAll('.status-select').forEach(sel => {
     sel.addEventListener('change', async () => {
-      await updateDoc(doc(db, 'orders', sel.dataset.id), { status: sel.value });
+      await updateOrderStatus(sel.dataset.id, sel.value);
       showToast('Order status update ho gaya');
     });
   });

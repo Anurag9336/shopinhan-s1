@@ -4,9 +4,9 @@
 // <title>/meta description/Open Graph/canonical updates, and JSON-LD
 // structured data injection. Everything here is genuinely functional —
 // GA4 events will start showing up in your Analytics dashboard as soon
-// as you paste a real GA_MEASUREMENT_ID in js/firebase-config.js.
+// as you paste a real GA_MEASUREMENT_ID in js/supabase-config.js.
 // =====================================================================
-import { SITE_URL, GA_MEASUREMENT_ID, STORE_SETTINGS } from './firebase-config.js';
+import { SITE_URL, GA_MEASUREMENT_ID, STORE_SETTINGS } from './supabase-config.js';
 
 // ---------------- Google Analytics 4 ----------------
 let gaLoaded = false;

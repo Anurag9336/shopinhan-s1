@@ -98,8 +98,7 @@
 
 <script type="module">
 import { requireAdmin, renderAdminNav } from '../js/admin-guard.js';
-import { db, formatINR, showToast, recordPurchase, fetchAllProductCosts, uploadFile, escapeHtml } from '../js/store.js';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { formatINR, showToast, recordPurchase, fetchAllProductCosts, fetchProducts, addProduct, updateProduct, deleteProduct, newProductId, uploadFile, escapeHtml } from '../js/store.js';
 
 await requireAdmin();
 renderAdminNav('products');
@@ -113,8 +112,7 @@ let products = [];
 let costs = {};
 
 async function load() {
-  const snap = await getDocs(collection(db, 'products'));
-  products = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  products = await fetchProducts();
   costs = await fetchAllProductCosts();
   if (products.length === 0) {
     tbody.innerHTML = '<tr><td colspan="10">Koi product nahi hai. "+ Add Product" se shuru karein.</td></tr>';
@@ -213,21 +211,21 @@ form.addEventListener('submit', async (e) => {
         saveBtn.textContent = 'Image upload ho raha hai…';
         data.image = await uploadFile('product-images', id, imageFile);
       }
-      await updateDoc(doc(db, 'products', id), data);
+      await updateProduct(id, data);
     } else {
+      const newId = newProductId();
       const stock = Number(document.getElementById('p-stock').value);
       const cost = Number(document.getElementById('p-cost').value);
       const supplier = document.getElementById('p-supplier').value.trim();
       const invoiceNumber = document.getElementById('p-invoice').value.trim();
       const purchaseDate = document.getElementById('p-purchase-date').value;
-      const newDoc = await addDoc(collection(db, 'products'), { ...data, stock: 0 });
       if (imageFile) {
         saveBtn.textContent = 'Image upload ho raha hai…';
-        const url = await uploadFile('product-images', newDoc.id, imageFile);
-        await updateDoc(doc(db, 'products', newDoc.id), { image: url });
+        data.image = await uploadFile('product-images', newId, imageFile);
       }
+      await addProduct({ ...data, id: newId, stock: 0 });
       if (stock > 0) {
-        await recordPurchase({ productId: newDoc.id, qty: stock, rate: cost, supplier, invoiceNumber, purchaseDate, note: 'Opening Stock' });
+        await recordPurchase({ productId: newId, qty: stock, rate: cost, supplier, invoiceNumber, purchaseDate, note: 'Opening Stock' });
       }
     }
     showToast('Product save ho gaya');
@@ -243,7 +241,7 @@ form.addEventListener('submit', async (e) => {
 
 async function removeProduct(id) {
   if (!confirm('Yeh product delete karna hai?')) return;
-  await deleteDoc(doc(db, 'products', id));
+  await deleteProduct(id);
   showToast('Product delete ho gaya');
   load();
 }

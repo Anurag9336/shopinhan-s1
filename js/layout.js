@@ -1,6 +1,6 @@
 // Shared header + footer markup, injected into every customer-facing page.
 // Edit this ONE file to change the header/footer site-wide.
-import { STORE_SETTINGS } from './firebase-config.js';
+import { STORE_SETTINGS } from './supabase-config.js';
 
 export function renderHeader(activeCategory = '') {
   document.getElementById('site-header-slot').innerHTML = `

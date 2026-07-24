@@ -1,20 +1,12 @@
 // =====================================================================
 // ShopInHand — core store engine (shared by every customer-facing page)
-// Vanilla JS + Firebase modular SDK (loaded from CDN, no build step).
+// Vanilla JS + Supabase JS client (loaded from CDN, no build step).
 // =====================================================================
-import { firebaseConfig, STORE_SETTINGS } from './firebase-config.js';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, STORE_SETTINGS } from './supabase-config.js';
 import { trackEvent } from './seo.js';
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import {
-  getFirestore, collection, getDocs, doc, getDoc, setDoc, query, where, orderBy, addDoc, serverTimestamp, updateDoc, increment, runTransaction
-} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import {
-  getStorage, ref, uploadBytes, getDownloadURL
-} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
 
-export const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
-export const storage = getStorage(app);
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // SECURITY: escape any user-controlled string before inserting it into
 // innerHTML. Customer checkout fields (name, address, city, state) are
@@ -33,17 +25,62 @@ export function escapeHtml(str) {
     .replace(/'/g, '&#39;');
 }
 
+// ---------------- Field-name mapping (Postgres snake_case → app camelCase) ---
+// Keeps every other file's field names (gstRate, hsnCode, createdAt, ...)
+// unchanged, so only this file needed to know about the DB schema.
+function mapProduct(row) {
+  if (!row) return null;
+  return {
+    id: row.id, name: row.name, price: Number(row.price), image: row.image,
+    stock: Number(row.stock || 0), gstRate: Number(row.gst_rate || 0),
+    hsnCode: row.hsn_code || '', category: row.category || null,
+    minStock: Number(row.min_stock ?? 5), sku: row.sku || '',
+    mrp: row.mrp === null || row.mrp === undefined ? null : Number(row.mrp),
+    description: row.description || '',
+    createdAt: row.created_at, updatedAt: row.updated_at
+  };
+}
+function mapOrder(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    items: (row.order_items || []).map(i => ({ id: i.product_id, name: i.name, price: Number(i.price), qty: i.qty })),
+    customer: {
+      name: row.customer_name, phone: row.customer_phone, email: row.customer_email,
+      address: row.customer_address, city: row.customer_city, pincode: row.customer_pincode,
+      state: row.customer_state
+    },
+    subtotal: Number(row.subtotal), deliveryFee: Number(row.delivery_fee), amount: Number(row.amount),
+    paymentMethod: row.payment_method, paymentId: row.payment_id, status: row.status,
+    gstBreakup: row.gst_breakup, createdAt: row.created_at
+  };
+}
+function mapMovement(row) {
+  if (!row) return null;
+  return {
+    id: row.id, productId: row.product_id, productName: row.product_name, type: row.type,
+    qty: row.qty, rate: row.rate === null ? null : Number(row.rate),
+    costPriceAtSale: row.cost_price_at_sale === null ? null : Number(row.cost_price_at_sale),
+    profit: row.profit === null ? null : Number(row.profit),
+    orderId: row.order_id, supplier: row.supplier || '', supplierGSTIN: row.supplier_gstin || '',
+    invoiceNumber: row.invoice_number || '', purchaseDate: row.purchase_date, note: row.note || '',
+    billUrl: row.bill_url || '', billFileName: row.bill_file_name || '', createdAt: row.created_at
+  };
+}
+function throwIfError(error) { if (error) throw new Error(error.message); }
+
 // Generic file uploader — used for product images and purchase bill
 // photos/PDFs. Returns the public download URL once upload finishes.
 // `folder` should be 'product-images' or 'purchase-bills' (must match
-// storage.rules paths). `id` is the product ID (used as a sub-folder so
-// files don't collide).
+// the storage buckets created in Supabase). `id` is used as a sub-folder
+// so files don't collide.
 export async function uploadFile(folder, id, file) {
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-  const path = `${folder}/${id}/${Date.now()}_${safeName}`;
-  const fileRef = ref(storage, path);
-  await uploadBytes(fileRef, file);
-  return getDownloadURL(fileRef);
+  const path = `${id}/${Date.now()}_${safeName}`;
+  const { error } = await supabase.storage.from(folder).upload(path, file, { upsert: false });
+  throwIfError(error);
+  const { data } = supabase.storage.from(folder).getPublicUrl(path);
+  return data.publicUrl;
 }
 
 // ---------------- Cart (persisted in localStorage — per device) -------
@@ -95,29 +132,68 @@ export function deliveryFee(subtotal) {
 
 // ---------------- Products ----------------
 export async function fetchProducts({ category = null } = {}) {
-  const col = collection(db, 'products');
-  const q = category ? query(col, where('category', '==', category)) : col;
-  const snap = await getDocs(q);
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  let q = supabase.from('products').select('*');
+  if (category) q = q.eq('category', category);
+  const { data, error } = await q;
+  throwIfError(error);
+  return (data || []).map(mapProduct);
 }
 export async function fetchProduct(id) {
-  const snap = await getDoc(doc(db, 'products', id));
-  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+  const { data, error } = await supabase.from('products').select('*').eq('id', id).maybeSingle();
+  throwIfError(error);
+  return mapProduct(data);
 }
 export async function fetchCategories() {
   const products = await fetchProducts();
   return [...new Set(products.map(p => p.category).filter(Boolean))];
 }
 
+// ---------------- Admin: product CRUD (used by admin/products.html) ---
+// Postgres needs an id supplied up front (Firestore used to auto-generate
+// one) — callers can pass data.id, or leave it out and we'll generate one.
+export function newProductId() {
+  return (crypto.randomUUID ? crypto.randomUUID() : `p_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+}
+export async function addProduct(data) {
+  const { data: row, error } = await supabase.from('products').insert({
+    id: data.id || newProductId(), name: data.name, price: data.price, image: data.image || null,
+    stock: data.stock ?? 0, gst_rate: data.gstRate ?? 0, hsn_code: data.hsnCode || '',
+    category: data.category || null, min_stock: data.minStock ?? 5,
+    sku: data.sku || '', mrp: data.mrp ?? null, description: data.description || ''
+  }).select().single();
+  throwIfError(error);
+  return mapProduct(row);
+}
+export async function updateProduct(id, data) {
+  const patch = {};
+  if ('name' in data) patch.name = data.name;
+  if ('price' in data) patch.price = data.price;
+  if ('image' in data) patch.image = data.image;
+  if ('stock' in data) patch.stock = data.stock;
+  if ('gstRate' in data) patch.gst_rate = data.gstRate;
+  if ('hsnCode' in data) patch.hsn_code = data.hsnCode;
+  if ('category' in data) patch.category = data.category;
+  if ('minStock' in data) patch.min_stock = data.minStock;
+  if ('sku' in data) patch.sku = data.sku;
+  if ('mrp' in data) patch.mrp = data.mrp;
+  if ('description' in data) patch.description = data.description;
+  patch.updated_at = new Date().toISOString();
+  const { error } = await supabase.from('products').update(patch).eq('id', id);
+  throwIfError(error);
+}
+export async function deleteProduct(id) {
+  const { error } = await supabase.from('products').delete().eq('id', id);
+  throwIfError(error);
+}
+
 // ---------------- Orders ----------------
-// SECURITY: order creation is NOT done by writing to Firestore directly
-// from the browser (firestore.rules blocks that — `allow create: if false`
-// on /orders). Instead, everything goes through the `/api/place-order`
-// serverless function (Vercel), which re-fetches real prices/stock from
-// Firestore and verifies any online payment server-side. The browser
-// only ever says WHAT to buy (product id + qty) and WHO the customer
-// is — never the price or total amount, which a tampered client could
-// otherwise fake.
+// SECURITY: order creation is NOT done by writing to the DB directly
+// from the browser (RLS blocks that — only `select` is allowed on
+// `products`, nothing else is public). Instead, everything goes through
+// the `/api/place-order` serverless function (Vercel), which re-fetches
+// real prices/stock and verifies any online payment server-side using
+// the service_role key. The browser only ever says WHAT to buy (product
+// id + qty) and WHO the customer is — never the price or total amount.
 async function callApi(path, payload) {
   const res = await fetch(path, {
     method: 'POST',
@@ -129,15 +205,10 @@ async function callApi(path, payload) {
   return data;
 }
 
-// Call BEFORE opening Razorpay Checkout — gets a real, server-computed
-// amount bound to a Razorpay order_id, so the Checkout modal can't be
-// tricked into charging less than the actual cart value.
 export async function createRazorpayOrderSecure(items) {
   return callApi('/api/create-razorpay-order', { items });
 }
 
-// Call after COD confirmation, or after a verified Razorpay payment
-// succeeds. Returns the new Firestore order ID.
 export async function placeOrder({ items, customer, paymentMethod, razorpay }) {
   const data = await callApi('/api/place-order', { items, customer, paymentMethod, razorpay });
   trackEvent('purchase', {
@@ -147,10 +218,32 @@ export async function placeOrder({ items, customer, paymentMethod, razorpay }) {
   });
   return data.orderId;
 }
+export async function fetchOrderById(id) {
+  const { data, error } = await supabase.from('orders').select('*, order_items(*)').eq('id', id).maybeSingle();
+  throwIfError(error);
+  return mapOrder(data);
+}
 export async function fetchOrdersByPhone(phone) {
-  const q = query(collection(db, 'orders'), where('customer.phone', '==', phone), orderBy('createdAt', 'desc'));
-  const snap = await getDocs(q);
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const { data, error } = await supabase
+    .from('orders')
+    .select('*, order_items(*)')
+    .eq('customer_phone', phone)
+    .order('created_at', { ascending: false });
+  throwIfError(error);
+  return (data || []).map(mapOrder);
+}
+
+// ---------------- Admin: orders (used by admin/index.html, admin/orders.html) ---
+export async function fetchAllOrders({ limitTo = null } = {}) {
+  let q = supabase.from('orders').select('*, order_items(*)').order('created_at', { ascending: false });
+  if (limitTo) q = q.limit(limitTo);
+  const { data, error } = await q;
+  throwIfError(error);
+  return (data || []).map(mapOrder);
+}
+export async function updateOrderStatus(id, status) {
+  const { error } = await supabase.from('orders').update({ status }).eq('id', id);
+  throwIfError(error);
 }
 
 // ---------------- Inventory ledger (purchases, sales, adjustments) ----
@@ -159,81 +252,52 @@ export async function fetchOrdersByPhone(phone) {
 // recorded history, same as a physical warehouse register.
 
 // Record a PURCHASE ENTRY: stock you bought in from a supplier.
-// Updates product.stock (public doc) and recalculates a weighted-average
-// cost price — but the cost itself is written to /product_costs, an
-// admin-only collection, so it's never exposed on the public product doc.
+// Updates products.stock and recalculates a weighted-average cost price
+// via the `record_purchase` Postgres function (atomic — see the schema
+// SQL). The cost itself lives in product_costs, which RLS keeps
+// unreadable to the public anon key.
 export async function recordPurchase({ productId, qty, rate, supplier = '', supplierGSTIN = '', invoiceNumber = '', purchaseDate = null, note = '', billUrl = '', billFileName = '' }) {
   if (qty <= 0) throw new Error('Quantity 0 se zyada honi chahiye');
-  const productRef = doc(db, 'products', productId);
-  const costRef = doc(db, 'product_costs', productId);
-  let productName = '';
-  let newCost = rate;
-  await runTransaction(db, async (tx) => {
-    const snap = await tx.get(productRef);
-    if (!snap.exists()) throw new Error('Product nahi mila');
-    const costSnap = await tx.get(costRef);
-    const p = snap.data();
-    productName = p.name;
-    const oldStock = Number(p.stock || 0);
-    const oldCost = Number(costSnap.exists() ? costSnap.data().costPrice || 0 : 0);
-    const newStock = oldStock + qty;
-    newCost = newStock > 0 ? ((oldStock * oldCost) + (qty * rate)) / newStock : rate;
-    newCost = Math.round(newCost * 100) / 100;
-    tx.update(productRef, { stock: newStock });
-    tx.set(costRef, { costPrice: newCost, updatedAt: serverTimestamp() });
+  const { error } = await supabase.rpc('record_purchase', {
+    p_product_id: productId, p_qty: qty, p_rate: rate,
+    p_supplier: supplier || '', p_supplier_gstin: supplierGSTIN || '',
+    p_invoice_number: invoiceNumber || '', p_purchase_date: purchaseDate || null,
+    p_note: note || '', p_bill_url: billUrl || '', p_bill_file_name: billFileName || ''
   });
-  await addDoc(collection(db, 'stock_movements'), {
-    productId, productName, type: 'purchase', qty, rate,
-    supplier: supplier || '', supplierGSTIN: supplierGSTIN || '', invoiceNumber: invoiceNumber || '',
-    purchaseDate: purchaseDate || null, note: note || '',
-    billUrl: billUrl || '', billFileName: billFileName || '',
-    createdAt: serverTimestamp()
-  });
+  throwIfError(error);
 }
 
 // Fetch the current (admin-only) cost price for one product.
 export async function fetchProductCost(productId) {
-  const snap = await getDoc(doc(db, 'product_costs', productId));
-  return snap.exists() ? Number(snap.data().costPrice || 0) : 0;
+  const { data, error } = await supabase.from('product_costs').select('cost_price').eq('product_id', productId).maybeSingle();
+  throwIfError(error);
+  return data ? Number(data.cost_price || 0) : 0;
 }
 
-// Fetch all cost prices at once as a { productId: costPrice } map —
-// used by the admin dashboard/products/inventory pages so they don't
-// need one Firestore read per product.
+// Fetch all cost prices at once as a { productId: costPrice } map.
 export async function fetchAllProductCosts() {
-  const snap = await getDocs(collection(db, 'product_costs'));
+  const { data, error } = await supabase.from('product_costs').select('product_id, cost_price');
+  throwIfError(error);
   const map = {};
-  snap.docs.forEach(d => { map[d.id] = Number(d.data().costPrice || 0); });
+  (data || []).forEach(r => { map[r.product_id] = Number(r.cost_price || 0); });
   return map;
 }
 
 // Record a manual ADJUSTMENT: damage, loss, miscount, opening stock fix.
-// delta can be positive (found extra stock) or negative (damaged/lost).
 export async function recordAdjustment({ productId, delta, note }) {
   if (!delta) throw new Error('Quantity change 0 nahi ho sakti');
-  const productRef = doc(db, 'products', productId);
-  let productName = '';
-  await runTransaction(db, async (tx) => {
-    const snap = await tx.get(productRef);
-    if (!snap.exists()) throw new Error('Product nahi mila');
-    const p = snap.data();
-    productName = p.name;
-    const newStock = Math.max(0, Number(p.stock || 0) + delta);
-    tx.update(productRef, { stock: newStock });
+  const { error } = await supabase.rpc('record_adjustment', {
+    p_product_id: productId, p_delta: delta, p_note: note || ''
   });
-  await addDoc(collection(db, 'stock_movements'), {
-    productId, productName, type: 'adjustment', qty: delta, rate: 0, note: note || '',
-    createdAt: serverTimestamp()
-  });
+  throwIfError(error);
 }
 
 export async function fetchStockMovements({ productId = null } = {}) {
-  const col = collection(db, 'stock_movements');
-  const q = productId
-    ? query(col, where('productId', '==', productId), orderBy('createdAt', 'desc'))
-    : query(col, orderBy('createdAt', 'desc'));
-  const snap = await getDocs(q);
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  let q = supabase.from('stock_movements').select('*').order('created_at', { ascending: false });
+  if (productId) q = q.eq('product_id', productId);
+  const { data, error } = await q;
+  throwIfError(error);
+  return (data || []).map(mapMovement);
 }
 
 // ---------------- Formatting ----------------

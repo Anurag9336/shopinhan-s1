@@ -1,11 +1,11 @@
 // =====================================================================
 // GST (India tax) calculation helpers.
 // Selling prices are treated as GST-INCLUSIVE (like an MRP) — see
-// STORE_SETTINGS.pricesIncludeGST in firebase-config.js. So we back-
+// STORE_SETTINGS.pricesIncludeGST in supabase-config.js. So we back-
 // calculate the taxable value and tax amount from the price the
 // customer actually pays; the total never changes because of tax.
 // =====================================================================
-import { STORE_SETTINGS } from './firebase-config.js';
+import { STORE_SETTINGS } from './supabase-config.js';
 
 // Split one GST-inclusive amount into { taxableValue, gstAmount }.
 export function splitInclusiveAmount(amountIncl, gstRatePercent) {

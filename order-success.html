@@ -25,10 +25,8 @@
 <div id="site-footer-slot"></div>
 
 <script type="module">
-import { formatINR, initHeaderWidgets, escapeHtml } from './js/store.js';
+import { formatINR, initHeaderWidgets, escapeHtml, fetchOrderById } from './js/store.js';
 import { renderHeader, renderFooter } from './js/layout.js';
-import { db } from './js/store.js';
-import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { initGA } from './js/seo.js';
 
 initGA();
@@ -41,9 +39,8 @@ const box = document.getElementById('order-details');
 
 async function load() {
   if (!id) { box.innerHTML = ''; return; }
-  const snap = await getDoc(doc(db, 'orders', id));
-  if (!snap.exists()) { box.innerHTML = '<p>Order details nahi mile.</p>'; return; }
-  const o = snap.data();
+  const o = await fetchOrderById(id);
+  if (!o) { box.innerHTML = '<p>Order details nahi mile.</p>'; return; }
   box.innerHTML = `
     <p><strong>Order ID:</strong> ${id}</p>
     <p><strong>Naam:</strong> ${escapeHtml(o.customer.name)}</p>

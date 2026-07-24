@@ -1,7 +1,7 @@
 // Shared, server-authoritative order logic. Never trust price/amount
-// from the client — everything here re-derives it from Firestore.
+// from the client — everything here re-derives it from the database.
 
-// Must match STORE_SETTINGS in js/firebase-config.js.
+// Must match STORE_SETTINGS in js/supabase-config.js.
 const FREE_DELIVERY_ABOVE = 499;
 const DELIVERY_FEE = 39;
 const SELLER_STATE = 'Delhi';
@@ -45,17 +45,21 @@ function sanitizeCustomer(customer) {
   return { name, phone, email, address, city, pincode, state };
 }
 
-async function computeServerTotals(db, cleanItems) {
-  const snaps = await Promise.all(cleanItems.map(i => db.collection('products').doc(i.id).get()));
+async function computeServerTotals(supabaseAdmin, cleanItems) {
+  const ids = cleanItems.map(i => i.id);
+  const { data: rows, error } = await supabaseAdmin.from('products').select('*').in('id', ids);
+  if (error) throw new Error(error.message);
+  const byId = {};
+  (rows || []).forEach(r => { byId[r.id] = r; });
+
   let subtotal = 0;
-  const priced = cleanItems.map((item, idx) => {
-    const snap = snaps[idx];
-    if (!snap.exists) throw new Error('Product ' + item.id + ' no longer exists');
-    const p = snap.data();
+  const priced = cleanItems.map(item => {
+    const p = byId[item.id];
+    if (!p) throw new Error('Product ' + item.id + ' no longer exists');
     const price = Number(p.price);
     const stock = Number(p.stock || 0);
     subtotal += price * item.qty;
-    return { id: item.id, qty: item.qty, name: p.name, price, stock, gstRate: Number(p.gstRate || 0), hsnCode: p.hsnCode || '' };
+    return { id: item.id, qty: item.qty, name: p.name, price, stock, gstRate: Number(p.gst_rate || 0), hsnCode: p.hsn_code || '' };
   });
   const deliveryFee = subtotal === 0 ? 0 : (subtotal >= FREE_DELIVERY_ABOVE ? 0 : DELIVERY_FEE);
   const amount = round2(subtotal + deliveryFee);

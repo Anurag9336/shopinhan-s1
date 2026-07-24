@@ -53,7 +53,7 @@
 import { fetchProducts, fetchCategories, addToCart, formatINR, initHeaderWidgets, escapeHtml } from './js/store.js';
 import { renderHeader, renderFooter, renderCategoryStrip } from './js/layout.js';
 import { initGA } from './js/seo.js';
-import { SITE_URL } from './js/firebase-config.js';
+import { SITE_URL } from './js/supabase-config.js';
 
 initGA();
 
@@ -124,7 +124,7 @@ async function load() {
     });
   } catch (err) {
     console.error(err);
-    grid.innerHTML = `<p style="color:#D93025">Products load nahi ho paaye. Firebase config check karein (js/firebase-config.js). Error: ${err.message}</p>`;
+    grid.innerHTML = `<p style="color:#D93025">Products load nahi ho paaye. Supabase config check karein (js/supabase-config.js). Error: ${err.message}</p>`;
   }
 }
 

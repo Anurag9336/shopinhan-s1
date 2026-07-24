@@ -1,13 +1,13 @@
-const { initAdmin } = require('./_lib/firebase-admin');
+const { getAdminClient } = require('./_lib/supabase-admin');
 
 module.exports = async (req, res) => {
   try {
-    const admin = initAdmin();
-    const db = admin.firestore();
+    const supabaseAdmin = getAdminClient();
     const domain = process.env.SITE_DOMAIN || 'https://PASTE_YOUR_DOMAIN_HERE.com';
-    const snap = await db.collection('products').get();
+    const { data: rows, error } = await supabaseAdmin.from('products').select('id');
+    if (error) throw new Error(error.message);
     const staticUrls = [{ loc: domain + '/index.html', priority: '1.0' }];
-    const productUrls = snap.docs.map(d => ({ loc: domain + '/product.html?id=' + d.id, priority: '0.8' }));
+    const productUrls = (rows || []).map(r => ({ loc: domain + '/product.html?id=' + r.id, priority: '0.8' }));
     const urls = staticUrls.concat(productUrls);
     const xml = '<?xml version="1.0" encoding="UTF-8"?>\n' +
       '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +

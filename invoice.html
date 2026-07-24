@@ -49,11 +49,10 @@
 <div id="site-footer-slot" class="no-print"></div>
 
 <script type="module">
-import { db, formatINR, initHeaderWidgets, escapeHtml } from './js/store.js';
+import { formatINR, initHeaderWidgets, escapeHtml, fetchOrderById } from './js/store.js';
 import { renderHeader, renderFooter } from './js/layout.js';
-import { STORE_SETTINGS } from './js/firebase-config.js';
+import { STORE_SETTINGS } from './js/supabase-config.js';
 import { groupByHSN, amountToWordsINR } from './js/gst.js';
-import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 renderHeader();
 renderFooter();
@@ -65,11 +64,10 @@ const root = document.getElementById('invoice-root');
 
 async function load() {
   if (!id) { root.innerHTML = '<p>Invalid invoice link.</p>'; return; }
-  const snap = await getDoc(doc(db, 'orders', id));
-  if (!snap.exists()) { root.innerHTML = '<p>Order nahi mila.</p>'; return; }
-  const o = snap.data();
+  const o = await fetchOrderById(id);
+  if (!o) { root.innerHTML = '<p>Order nahi mila.</p>'; return; }
   const g = o.gstBreakup;
-  const date = o.createdAt?.toDate ? o.createdAt.toDate().toLocaleDateString('en-IN') : '-';
+  const date = o.createdAt ? new Date(o.createdAt).toLocaleDateString('en-IN') : '-';
 
   if (!g) {
     root.innerHTML = `

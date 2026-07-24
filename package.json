@@ -1,9 +1,9 @@
 {
   "name": "shopinhand-vercel-functions",
-  "description": "Serverless API functions for ShopInHand (place-order, create-razorpay-order, sitemap) — avoids needing Firebase's paid Blaze plan.",
+  "description": "Serverless API functions for ShopInHand (place-order, create-razorpay-order, sitemap) — runs on Supabase (Postgres) + Vercel, fully free tier, no card required.",
   "private": true,
   "dependencies": {
-    "firebase-admin": "^12.0.0",
+    "@supabase/supabase-js": "^2.45.0",
     "razorpay": "^2.9.4"
   }
 }

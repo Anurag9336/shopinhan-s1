@@ -1,13 +1,11 @@
-import { app } from './store.js';
-import { ADMIN_EMAILS, STORE_SETTINGS } from './firebase-config.js';
-import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-
-export const auth = getAuth(app);
+import { supabase } from './store.js';
+import { ADMIN_EMAILS, STORE_SETTINGS } from './supabase-config.js';
 
 // Resolves with the admin user, or redirects to login.html
 export function requireAdmin() {
   return new Promise((resolve) => {
-    onAuthStateChanged(auth, (user) => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      const user = session && session.user;
       if (!user || !ADMIN_EMAILS.includes(user.email)) {
         location.href = 'login.html';
         return;
@@ -31,7 +29,7 @@ export function renderAdminNav(active) {
   `;
   document.getElementById('logout-link').addEventListener('click', async (e) => {
     e.preventDefault();
-    await signOut(auth);
+    await supabase.auth.signOut();
     location.href = 'login.html';
   });
 }

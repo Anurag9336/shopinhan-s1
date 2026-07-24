@@ -25,34 +25,31 @@
 </div>
 
 <script type="module">
-import { app } from '../js/store.js';
-import { ADMIN_EMAILS } from '../js/firebase-config.js';
-import { getAuth, signInWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { supabase } from '../js/store.js';
+import { ADMIN_EMAILS } from '../js/supabase-config.js';
 
-const auth = getAuth(app);
 const form = document.getElementById('login-form');
 const errEl = document.getElementById('login-error');
 
-onAuthStateChanged(auth, (user) => {
-  if (user && ADMIN_EMAILS.includes(user.email)) location.href = 'index.html';
-});
+const { data: { session } } = await supabase.auth.getSession();
+if (session && ADMIN_EMAILS.includes(session.user.email)) location.href = 'index.html';
 
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
   errEl.textContent = '';
   const email = document.getElementById('email').value.trim();
   const password = document.getElementById('password').value;
-  try {
-    const cred = await signInWithEmailAndPassword(auth, email, password);
-    if (!ADMIN_EMAILS.includes(cred.user.email)) {
-      errEl.textContent = 'Yeh account admin access ke liye authorized nahi hai.';
-      await auth.signOut();
-      return;
-    }
-    location.href = 'index.html';
-  } catch (err) {
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) {
     errEl.textContent = 'Login fail: galat email ya password.';
+    return;
   }
+  if (!ADMIN_EMAILS.includes(data.user.email)) {
+    errEl.textContent = 'Yeh account admin access ke liye authorized nahi hai.';
+    await supabase.auth.signOut();
+    return;
+  }
+  location.href = 'index.html';
 });
 </script>
 </body>
