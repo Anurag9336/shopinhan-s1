@@ -1,0 +1,77 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===================================================================
+    // SECURITY FIX: "signed in" is NOT the same as "admin".
+    // Firebase Authentication (Email/Password) can be called by anyone
+    // who opens the site — the API key embedded in every page is meant
+    // to be public, and by itself it does not restrict who can sign up.
+    // The OLD rules here checked only `request.auth != null`, which
+    // meant ANY visitor who created a Firebase Auth account (via the
+    // browser console, no invite needed) got full write access to
+    // products, purchase cost data, and the ability to edit/delete
+    // other people's orders. This isAdmin() check closes that gap by
+    // requiring the signed-in user's email to appear in the /admins
+    // collection — which only you can populate (see below).
+    //
+    // SETUP (one-time, per admin): Firebase Console → Firestore →
+    // Data tab → Start collection → id "admins" → Document ID = the
+    // admin's exact email address (lowercase) → any field, e.g.
+    // { allowed: true }. Do this for every email in ADMIN_EMAILS
+    // (js/firebase-config.js). The /admins collection itself cannot be
+    // written from any client (see rule below) — only via the Firebase
+    // Console or a trusted backend script, so it can't be tampered with.
+    // ===================================================================
+    function isAdmin() {
+      return request.auth != null &&
+             exists(/databases/$(database)/documents/admins/$(request.auth.token.email));
+    }
+
+    match /admins/{email} {
+      allow read: if request.auth != null && request.auth.token.email == email;
+      allow write: if false; // console-only — never settable by any client
+    }
+
+    // Anyone can view products (needed for the shop to load).
+    // Only admins can add/edit/delete products.
+    // 'costPrice' is explicitly blocked here — purchase cost is NEVER
+    // stored on this public-readable document. It lives only in
+    // /product_costs (admin-only read+write, see below).
+    match /products/{productId} {
+      allow read: if true;
+      allow write: if isAdmin() && !('costPrice' in request.resource.data);
+    }
+
+    // Purchase cost, per product — admin-only, never publicly readable.
+    match /product_costs/{productId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Orders. Direct client writes are blocked entirely — every order
+    // is created by the `placeOrder` Cloud Function (functions/index.js),
+    // which re-verifies real prices, real stock, and (for online
+    // payments) a genuine Razorpay payment before writing anything.
+    // The Cloud Function uses the Admin SDK, which always bypasses
+    // these rules, so blocking client `create` here does not affect it.
+    //
+    // `read: if true` is intentional: customers aren't logged in, so
+    // "My Orders" and the tax-invoice page look orders up by phone
+    // number / a long random order ID rather than a user account. This
+    // relies on order IDs being practically unguessable — see
+    // README "Security notes" for the accepted trade-off and how to
+    // tighten this further if you outgrow it.
+    match /orders/{orderId} {
+      allow create: if false;
+      allow read: if true;
+      allow update, delete: if isAdmin();
+    }
+
+    // Inventory ledger (purchases, sales, adjustments). Contains
+    // purchase cost data, so it's admin-only. Sale entries are written
+    // by the placeOrder Cloud Function (Admin SDK, bypasses these rules).
+    match /stock_movements/{entryId} {
+      allow read, write: if isAdmin();
+    }
+  }
+}

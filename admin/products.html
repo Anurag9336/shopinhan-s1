@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Products — ShopInHand Admin</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="../assets/logo.jpg">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div class="admin-shell">
+  <nav class="admin-nav" id="admin-nav-slot"></nav>
+  <main class="admin-main">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+      <h2 style="color:var(--navy);margin:0">Products</h2>
+      <button class="btn" id="add-btn">+ Add Product</button>
+    </div>
+    <p style="font-size:13px;color:#4b5673;margin-top:-10px">
+      Stock badhane ke liye <a href="inventory.html" style="color:var(--navy);font-weight:700">Inventory → Add Purchase</a> use karein
+      — yahan se sirf naya product banate waqt opening stock set hota hai.
+    </p>
+    <table class="table">
+      <thead><tr><th>Image</th><th>Name</th><th>Category</th><th>Purchase Cost</th><th>Selling Price</th><th>GST%</th><th>Margin</th><th>Stock</th><th>Min Stock</th><th>Actions</th></tr></thead>
+      <tbody id="products-tbody"><tr><td colspan="10">Loading…</td></tr></tbody>
+    </table>
+  </main>
+</div>
+
+<div class="modal-bg" id="modal-bg">
+  <div class="modal">
+    <h3 id="modal-title">Add Product</h3>
+    <form id="product-form">
+      <input type="hidden" id="p-id">
+      <div class="field"><label>Product Name</label><input type="text" id="p-name" required></div>
+      <div class="two-col">
+        <div class="field"><label>Category</label><input type="text" id="p-category" placeholder="e.g. Pens" required></div>
+        <div class="field"><label>SKU (optional)</label><input type="text" id="p-sku"></div>
+      </div>
+      <div class="two-col">
+        <div class="field"><label>Selling Price (₹) — customer isse pay karega</label><input type="number" id="p-price" min="0" step="1" required></div>
+        <div class="field"><label>MRP (₹, optional)</label><input type="number" id="p-mrp" min="0" step="1"></div>
+      </div>
+      <div class="field"><label>Minimum Stock (low-stock alert threshold)</label><input type="number" id="p-minstock" min="0" step="1" value="5" required></div>
+      <div class="two-col">
+        <div class="field"><label>GST Rate (%)</label>
+          <select id="p-gst-rate">
+            <option value="0">0% (exempt)</option>
+            <option value="5">5%</option>
+            <option value="12" selected>12%</option>
+            <option value="18">18%</option>
+            <option value="28">28%</option>
+          </select>
+        </div>
+        <div class="field"><label>HSN Code</label><input type="text" id="p-hsn" placeholder="e.g. 4820" maxlength="8"></div>
+      </div>
+      <p style="font-size:12px;color:#8a93a6;margin-top:-8px">Selling Price GST-inclusive maana jaata hai — tax invoice mein isi rate se taxable value aur GST amount nikaala jaata hai. Sahi HSN/GST rate apne CA se confirm kar lein.</p>
+
+      <div id="opening-stock-block">
+        <div class="two-col">
+          <div class="field"><label>Opening Stock Quantity</label><input type="number" id="p-stock" min="0" step="1" required></div>
+          <div class="field"><label>Purchase Cost (₹/unit) — aap khareede us rate par</label><input type="number" id="p-cost" min="0" step="1" required></div>
+        </div>
+        <div class="two-col">
+          <div class="field"><label>Supplier</label><input type="text" id="p-supplier" placeholder="e.g. Aggarwal Stationery Wholesale"></div>
+          <div class="field"><label>Invoice Number</label><input type="text" id="p-invoice" placeholder="e.g. INV-2026-0142"></div>
+        </div>
+        <div class="field"><label>Purchase Date</label><input type="date" id="p-purchase-date"></div>
+        <p style="font-size:12px;color:#8a93a6;margin-top:-8px">Yeh entry inventory ledger mein "Opening Stock" purchase ke roop mein record hogi. Purchase Cost sirf admin ko dikhta hai — customer ko kabhi nahi.</p>
+      </div>
+      <div id="locked-stock-block" style="display:none">
+        <div class="panel" style="background:var(--mist);padding:12px 14px">
+          <div style="display:flex;justify-content:space-between;font-size:13px">
+            <span>Current Stock</span><strong id="locked-stock-val">-</strong>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:13px;margin-top:4px">
+            <span>Current Purchase Cost (avg)</span><strong id="locked-cost-val">-</strong>
+          </div>
+          <p style="font-size:12px;color:#8a93a6;margin:8px 0 0">Stock badhane/ghataane ke liye modal band karke <a href="inventory.html">Inventory</a> page use karein.</p>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Product Image</label>
+        <input type="file" id="p-image-file" accept="image/*">
+        <p style="font-size:12px;color:#8a93a6;margin:4px 0 4px">Camera se photo khींच sakte ho ya gallery se choose kar sakte ho. Ya neeche seedha URL bhi de sakte ho:</p>
+        <input type="url" id="p-image" placeholder="https://...">
+      </div>
+      <div class="field"><label>Description</label><textarea id="p-description" rows="3"></textarea></div>
+      <div style="display:flex;gap:10px;margin-top:16px">
+        <button type="button" class="btn btn-outline btn-block" id="cancel-btn">Cancel</button>
+        <button type="submit" class="btn btn-block">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script type="module">
+import { requireAdmin, renderAdminNav } from '../js/admin-guard.js';
+import { db, formatINR, showToast, recordPurchase, fetchAllProductCosts, uploadFile, escapeHtml } from '../js/store.js';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+await requireAdmin();
+renderAdminNav('products');
+
+const tbody = document.getElementById('products-tbody');
+const modalBg = document.getElementById('modal-bg');
+const form = document.getElementById('product-form');
+const openingBlock = document.getElementById('opening-stock-block');
+const lockedBlock = document.getElementById('locked-stock-block');
+let products = [];
+let costs = {};
+
+async function load() {
+  const snap = await getDocs(collection(db, 'products'));
+  products = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  costs = await fetchAllProductCosts();
+  if (products.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="10">Koi product nahi hai. "+ Add Product" se shuru karein.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = products.map(p => {
+    const cost = Number(costs[p.id] || 0);
+    const margin = p.price - cost;
+    const minStock = p.minStock ?? 5;
+    const lowStock = Number(p.stock || 0) <= minStock;
+    return `
+    <tr>
+      <td><img src="${p.image || '../assets/placeholder.svg'}" alt=""></td>
+      <td>${escapeHtml(p.name)}</td>
+      <td>${escapeHtml(p.category) || '-'}</td>
+      <td>${cost ? formatINR(cost) : '—'}</td>
+      <td>${formatINR(p.price)}</td>
+      <td>${p.gstRate ?? 0}%</td>
+      <td style="color:${margin>=0 ? 'var(--success)':'var(--danger)'}">${cost ? formatINR(margin) : '—'}</td>
+      <td>${p.stock ?? 0} ${lowStock ? '<span class="badge-stock" style="margin-left:6px">Low</span>' : ''}</td>
+      <td>${minStock}</td>
+      <td>
+        <button class="icon-btn edit-btn" data-id="${p.id}">Edit</button>
+        <button class="icon-btn danger del-btn" data-id="${p.id}">Delete</button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  tbody.querySelectorAll('.edit-btn').forEach(b => b.addEventListener('click', () => openModal(products.find(p => p.id === b.dataset.id))));
+  tbody.querySelectorAll('.del-btn').forEach(b => b.addEventListener('click', () => removeProduct(b.dataset.id)));
+}
+
+function openModal(p = null) {
+  document.getElementById('modal-title').textContent = p ? 'Edit Product' : 'Add Product';
+  document.getElementById('p-id').value = p?.id || '';
+  document.getElementById('p-name').value = p?.name || '';
+  document.getElementById('p-category').value = p?.category || '';
+  document.getElementById('p-sku').value = p?.sku || '';
+  document.getElementById('p-price').value = p?.price ?? '';
+  document.getElementById('p-mrp').value = p?.mrp ?? '';
+  document.getElementById('p-minstock').value = p?.minStock ?? 5;
+  document.getElementById('p-gst-rate').value = p?.gstRate ?? 12;
+  document.getElementById('p-hsn').value = p?.hsnCode || '';
+  document.getElementById('p-image').value = p?.image || '';
+  document.getElementById('p-image-file').value = '';
+  document.getElementById('p-description').value = p?.description || '';
+
+  if (p) {
+    // Editing an existing product — stock is locked, managed via Inventory ledger only.
+    openingBlock.style.display = 'none';
+    lockedBlock.style.display = '';
+    document.getElementById('p-stock').required = false;
+    document.getElementById('p-cost').required = false;
+    document.getElementById('locked-stock-val').textContent = p.stock ?? 0;
+    document.getElementById('locked-cost-val').textContent = costs[p.id] ? formatINR(costs[p.id]) : '—';
+  } else {
+    openingBlock.style.display = '';
+    lockedBlock.style.display = 'none';
+    document.getElementById('p-stock').required = true;
+    document.getElementById('p-cost').required = true;
+    document.getElementById('p-stock').value = '';
+    document.getElementById('p-cost').value = '';
+    document.getElementById('p-supplier').value = '';
+    document.getElementById('p-invoice').value = '';
+    document.getElementById('p-purchase-date').value = new Date().toISOString().slice(0, 10);
+  }
+  modalBg.classList.add('open');
+}
+function closeModal() { modalBg.classList.remove('open'); }
+
+document.getElementById('add-btn').addEventListener('click', () => openModal());
+document.getElementById('cancel-btn').addEventListener('click', closeModal);
+modalBg.addEventListener('click', (e) => { if (e.target === modalBg) closeModal(); });
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const saveBtn = form.querySelector('button[type="submit"]');
+  const id = document.getElementById('p-id').value;
+  const imageFile = document.getElementById('p-image-file').files[0];
+  const data = {
+    name: document.getElementById('p-name').value.trim(),
+    category: document.getElementById('p-category').value.trim(),
+    sku: document.getElementById('p-sku').value.trim(),
+    price: Number(document.getElementById('p-price').value),
+    mrp: document.getElementById('p-mrp').value ? Number(document.getElementById('p-mrp').value) : null,
+    minStock: Number(document.getElementById('p-minstock').value || 5),
+    gstRate: Number(document.getElementById('p-gst-rate').value || 0),
+    hsnCode: document.getElementById('p-hsn').value.trim(),
+    image: document.getElementById('p-image').value.trim(),
+    description: document.getElementById('p-description').value.trim()
+  };
+  try {
+    saveBtn.disabled = true;
+    if (id) {
+      if (imageFile) {
+        saveBtn.textContent = 'Image upload ho raha hai…';
+        data.image = await uploadFile('product-images', id, imageFile);
+      }
+      await updateDoc(doc(db, 'products', id), data);
+    } else {
+      const stock = Number(document.getElementById('p-stock').value);
+      const cost = Number(document.getElementById('p-cost').value);
+      const supplier = document.getElementById('p-supplier').value.trim();
+      const invoiceNumber = document.getElementById('p-invoice').value.trim();
+      const purchaseDate = document.getElementById('p-purchase-date').value;
+      const newDoc = await addDoc(collection(db, 'products'), { ...data, stock: 0 });
+      if (imageFile) {
+        saveBtn.textContent = 'Image upload ho raha hai…';
+        const url = await uploadFile('product-images', newDoc.id, imageFile);
+        await updateDoc(doc(db, 'products', newDoc.id), { image: url });
+      }
+      if (stock > 0) {
+        await recordPurchase({ productId: newDoc.id, qty: stock, rate: cost, supplier, invoiceNumber, purchaseDate, note: 'Opening Stock' });
+      }
+    }
+    showToast('Product save ho gaya');
+    closeModal();
+    load();
+  } catch (err) {
+    alert('Error: ' + err.message);
+  } finally {
+    saveBtn.textContent = 'Save';
+    saveBtn.disabled = false;
+  }
+});
+
+async function removeProduct(id) {
+  if (!confirm('Yeh product delete karna hai?')) return;
+  await deleteDoc(doc(db, 'products', id));
+  showToast('Product delete ho gaya');
+  load();
+}
+
+load().catch(err => { tbody.innerHTML = `<tr><td colspan="8" style="color:#D93025">Error: ${err.message}</td></tr>`; });
+</script>
+</body>
+</html>

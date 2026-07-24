@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Product — ShopInHand</title>
+<meta name="description" content="Yeh product ShopInHand par available hai — fast delivery, COD available.">
+<!-- Static fallback for share crawlers that don't run JS (WhatsApp/Facebook).
+     Real browsers + Googlebot get the product-specific version via seo.js. -->
+<meta property="og:type" content="product">
+<meta property="og:site_name" content="ShopInHand">
+<meta property="og:title" content="ShopInHand — Stationery Store">
+<meta property="og:image" content="assets/logo.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="assets/logo.jpg">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="site-header-slot"></div>
+
+<main class="container section" id="pdp-root">
+  <p>Loading…</p>
+</main>
+
+<section class="container section" id="related-section" style="display:none">
+  <div class="section-head"><h2>Aapko yeh bhi pasand aa sakta hai</h2></div>
+  <div class="grid" id="related-grid"></div>
+</section>
+
+<div id="site-footer-slot"></div>
+
+<script type="module">
+import { fetchProduct, fetchProducts, addToCart, formatINR, initHeaderWidgets, escapeHtml } from './js/store.js';
+import { renderHeader, renderFooter } from './js/layout.js';
+import { initGA, trackEvent, setPageMeta, injectProductSchema, whatsappShareUrl } from './js/seo.js';
+
+initGA();
+renderHeader();
+renderFooter();
+initHeaderWidgets();
+
+const id = new URLSearchParams(location.search).get('id');
+const root = document.getElementById('pdp-root');
+
+async function load() {
+  if (!id) { root.innerHTML = '<p>Product ID missing.</p>'; return; }
+  const p = await fetchProduct(id);
+  if (!p) { root.innerHTML = '<p>Yeh product nahi mila.</p>'; return; }
+  const path = `/product.html?id=${p.id}`;
+  setPageMeta({
+    title: `${p.name} — ShopInHand`,
+    description: p.description || `${p.name} — ShopInHand par order karein, fast delivery & COD available.`,
+    image: p.image,
+    path
+  });
+  injectProductSchema(p, path);
+  trackEvent('view_item', {
+    currency: 'INR',
+    value: p.price,
+    items: [{ item_id: p.id, item_name: p.name, price: p.price }]
+  });
+  const off = p.mrp && p.mrp > p.price ? Math.round((1 - p.price / p.mrp) * 100) : 0;
+  const outOfStock = (p.stock ?? 1) <= 0;
+  root.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:36px;align-items:start" class="pdp-grid">
+      <div class="panel" style="padding:0;overflow:hidden">
+        <img src="${p.image || 'assets/placeholder.svg'}" alt="${escapeHtml(p.name)}" style="width:100%;aspect-ratio:1/1;object-fit:cover">
+      </div>
+      <div>
+        <span class="eyebrow">${p.category || 'Stationery'}</span>
+        <h1 style="margin:6px 0 12px;color:var(--navy);font-size:26px">${escapeHtml(p.name)}</h1>
+        <div class="price-row" style="font-size:20px">
+          <span class="price" style="font-size:26px">${formatINR(p.price)}</span>
+          ${p.mrp && p.mrp > p.price ? `<span class="mrp">${formatINR(p.mrp)}</span><span class="off">${off}% off</span>` : ''}
+        </div>
+        <p style="font-size:12px;color:#8a93a6;margin:2px 0 0">Inclusive of all taxes</p>
+        <p style="color:#4b5673;line-height:1.6;margin:16px 0">${escapeHtml(p.description) || ''}</p>
+        ${outOfStock ? '<p class="badge-stock" style="font-size:14px">Abhi stock mein nahi hai</p>' :
+          `<p style="font-size:13px;color:var(--success);font-weight:600;margin-bottom:16px">✓ In stock${p.stock ? ` — ${p.stock} available` : ''}</p>`}
+        <div style="display:flex;gap:12px;max-width:420px">
+          <button class="btn btn-outline btn-block" id="add-cart-btn" ${outOfStock ? 'disabled' : ''}>Add to Cart</button>
+          <button class="btn btn-block" id="buy-now-btn" ${outOfStock ? 'disabled' : ''}>Buy Now</button>
+        </div>
+        <a id="whatsapp-share-btn" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;margin-top:12px;font-size:13px;color:#25D366;font-weight:600;text-decoration:none">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.44.79 3.07 1.2 4.74 1.2h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2zm0 18.14h-.01c-1.48 0-2.93-.4-4.2-1.15l-.3-.18-3.12.82.83-3.04-.2-.31a8.2 8.2 0 0 1-1.26-4.38c0-4.54 3.7-8.24 8.25-8.24 2.2 0 4.27.86 5.83 2.42a8.19 8.19 0 0 1 2.41 5.83c0 4.55-3.7 8.24-8.24 8.24z"/></svg>
+          Share on WhatsApp
+        </a>
+        <div class="panel" style="margin-top:24px;font-size:13px;color:#4b5673">
+          <p style="margin:4px 0">🚚 Free delivery available on qualifying orders</p>
+          <p style="margin:4px 0">↩️ Easy returns within 7 days</p>
+          <p style="margin:4px 0">🔒 100% secure payments (UPI / Cards / COD)</p>
+        </div>
+      </div>
+    </div>`;
+
+  document.getElementById('add-cart-btn').addEventListener('click', () => addToCart(p, 1));
+  document.getElementById('buy-now-btn').addEventListener('click', () => { addToCart(p, 1); location.href = 'checkout.html'; });
+  document.getElementById('whatsapp-share-btn').href = whatsappShareUrl(`${p.name} — ${formatINR(p.price)}`, path);
+
+  if (p.category) {
+    const related = (await fetchProducts({ category: p.category })).filter(x => x.id !== p.id).slice(0, 4);
+    if (related.length) {
+      document.getElementById('related-section').style.display = '';
+      document.getElementById('related-grid').innerHTML = related.map(r => `
+        <div class="card">
+          <a href="product.html?id=${r.id}" class="thumb"><img src="${r.image || 'assets/placeholder.svg'}" alt="${escapeHtml(r.name)}"></a>
+          <div class="card-body">
+            <a href="product.html?id=${r.id}"><h3>${escapeHtml(r.name)}</h3></a>
+            <div class="price-row"><span class="price">${formatINR(r.price)}</span></div>
+          </div>
+        </div>`).join('');
+    }
+  }
+}
+load().catch(err => { console.error(err); root.innerHTML = `<p style="color:#D93025">Error: ${err.message}</p>`; });
+</script>
+
+<style>
+@media(max-width:760px){ .pdp-grid{grid-template-columns:1fr !important} }
+</style>
+</body>
+</html>

@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Inventory — ShopInHand Admin</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="../assets/logo.jpg">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div class="admin-shell">
+  <nav class="admin-nav" id="admin-nav-slot"></nav>
+  <main class="admin-main">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+      <h2 style="color:var(--navy);margin:0">Inventory</h2>
+      <div style="display:flex;gap:10px">
+        <button class="btn btn-outline" id="adjust-btn">Stock Adjustment</button>
+        <button class="btn" id="purchase-btn">+ Add Purchase</button>
+      </div>
+    </div>
+
+    <div class="stat-cards" id="stats">
+      <div class="stat-card"><div class="num">…</div><div class="label">Total Stock Units</div></div>
+      <div class="stat-card"><div class="num">…</div><div class="label">Inventory Value (cost)</div></div>
+      <div class="stat-card"><div class="num">…</div><div class="label">Low Stock Products</div></div>
+    </div>
+
+    <div class="panel" style="margin-bottom:16px;display:flex;gap:10px;align-items:center">
+      <label style="font-size:13px;font-weight:600;color:var(--navy)">Filter by product:</label>
+      <select id="product-filter" style="padding:8px 10px;border:1.5px solid var(--line);border-radius:7px;min-width:220px">
+        <option value="">All products</option>
+      </select>
+    </div>
+
+    <h3 style="color:var(--navy)">Stock Ledger (poora record)</h3>
+    <table class="table">
+      <thead><tr><th>Date</th><th>Product</th><th>Type</th><th>Qty</th><th>Rate</th><th>Supplier / Ref</th><th>Invoice #</th><th>Bill</th><th>Note</th></tr></thead>
+      <tbody id="ledger-tbody"><tr><td colspan="9">Loading…</td></tr></tbody>
+    </table>
+  </main>
+</div>
+
+<!-- Purchase Modal -->
+<div class="modal-bg" id="purchase-modal-bg">
+  <div class="modal">
+    <h3>Add Purchase (Stock In)</h3>
+    <p style="font-size:13px;color:#4b5673">Jo saman aap warehouse ke liye khareedte hain, woh yahan record karein.</p>
+    <form id="purchase-form">
+      <div class="field"><label>Product</label><select id="pu-product" required></select></div>
+      <div class="two-col">
+        <div class="field"><label>Quantity Purchased</label><input type="number" id="pu-qty" min="1" step="1" required></div>
+        <div class="field"><label>Purchase Cost (₹/unit)</label><input type="number" id="pu-rate" min="0" step="1" required></div>
+      </div>
+      <div class="two-col">
+        <div class="field"><label>Supplier</label><input type="text" id="pu-supplier" placeholder="e.g. Aggarwal Stationery Wholesale" required></div>
+        <div class="field"><label>Supplier GSTIN (optional)</label><input type="text" id="pu-supplier-gstin" placeholder="e.g. 07AAAAA0000A1Z5" maxlength="15"></div>
+      </div>
+      <div class="field"><label>Invoice Number</label><input type="text" id="pu-invoice" placeholder="e.g. INV-2026-0142" required></div>
+      <div class="field"><label>Purchase Date</label><input type="date" id="pu-date" required></div>
+      <div class="field">
+        <label>Bill / Invoice Photo ya PDF (proof ke liye — GST checking mein kaam aayega)</label>
+        <input type="file" id="pu-bill" accept="image/*,application/pdf">
+        <p style="font-size:12px;color:#8a93a6;margin:4px 0 0">Camera se photo khींच sakte ho ya file choose kar sakte ho. Yeh sirf admin ko dikhega, customer ko kabhi nahi.</p>
+      </div>
+      <div class="field"><label>Note (optional)</label><input type="text" id="pu-note"></div>
+      <div style="display:flex;gap:10px;margin-top:16px">
+        <button type="button" class="btn btn-outline btn-block" id="purchase-cancel">Cancel</button>
+        <button type="submit" class="btn btn-block">Save Purchase</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Adjustment Modal -->
+<div class="modal-bg" id="adjust-modal-bg">
+  <div class="modal">
+    <h3>Stock Adjustment</h3>
+    <p style="font-size:13px;color:#4b5673">Damage, loss, ya galat count theek karne ke liye. Yeh purchase cost nahi badalta.</p>
+    <form id="adjust-form">
+      <div class="field"><label>Product</label><select id="ad-product" required></select></div>
+      <div class="field"><label>Change Type</label>
+        <select id="ad-direction">
+          <option value="1">Stock badhana (+)</option>
+          <option value="-1">Stock ghataana (−) — damage/loss</option>
+        </select>
+      </div>
+      <div class="field"><label>Quantity</label><input type="number" id="ad-qty" min="1" step="1" required></div>
+      <div class="field"><label>Reason / Note</label><input type="text" id="ad-note" placeholder="e.g. 2 notebooks damaged in transit" required></div>
+      <div style="display:flex;gap:10px;margin-top:16px">
+        <button type="button" class="btn btn-outline btn-block" id="adjust-cancel">Cancel</button>
+        <button type="submit" class="btn btn-block">Save Adjustment</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script type="module">
+import { requireAdmin, renderAdminNav } from '../js/admin-guard.js';
+import { db, formatINR, showToast, recordPurchase, recordAdjustment, fetchStockMovements, fetchAllProductCosts, uploadFile, escapeHtml } from '../js/store.js';
+import { collection, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+await requireAdmin();
+renderAdminNav('inventory');
+
+let products = [];
+
+async function loadProducts() {
+  const snap = await getDocs(collection(db, 'products'));
+  products = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const costs = await fetchAllProductCosts();
+  const options = products.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+  document.getElementById('pu-product').innerHTML = options;
+  document.getElementById('ad-product').innerHTML = options;
+  const filter = document.getElementById('product-filter');
+  filter.innerHTML = '<option value="">All products</option>' + options;
+
+  const totalUnits = products.reduce((s, p) => s + Number(p.stock || 0), 0);
+  const totalValue = products.reduce((s, p) => s + Number(p.stock || 0) * Number(costs[p.id] || 0), 0);
+  const lowStock = products.filter(p => Number(p.stock || 0) <= Number(p.minStock ?? 5)).length;
+  document.querySelectorAll('.stat-card .num')[0].textContent = totalUnits;
+  document.querySelectorAll('.stat-card .num')[1].textContent = formatINR(totalValue);
+  document.querySelectorAll('.stat-card .num')[2].textContent = lowStock;
+}
+
+async function loadLedger(productId = '') {
+  const tbody = document.getElementById('ledger-tbody');
+  tbody.innerHTML = '<tr><td colspan="9">Loading…</td></tr>';
+  const rows = await fetchStockMovements(productId ? { productId } : {});
+  if (rows.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="9">Abhi tak koi stock movement record nahi hai.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td>${r.type === 'purchase' && r.purchaseDate ? r.purchaseDate : (r.createdAt?.toDate ? r.createdAt.toDate().toLocaleString('en-IN') : '-')}</td>
+      <td>${escapeHtml(r.productName) || '-'}</td>
+      <td><span class="status-pill ${r.type==='purchase'?'status-paid':r.type==='sale'?'status-shipped':'status-pending'}">${r.type}</span></td>
+      <td style="color:${r.qty>=0?'var(--success)':'var(--danger)'}">${r.qty>0?'+':''}${r.qty}</td>
+      <td>${r.rate ? formatINR(r.rate) : '—'}</td>
+      <td>${escapeHtml(r.supplier) || (r.orderId ? '#'+r.orderId.slice(0,8) : '-')}</td>
+      <td>${escapeHtml(r.invoiceNumber) || '-'}</td>
+      <td>${r.billUrl ? `<a href="${r.billUrl}" target="_blank" rel="noopener" style="color:var(--navy);font-weight:700">📄 View</a>` : '—'}</td>
+      <td>${escapeHtml(r.note) || '-'}${r.type==='sale' && r.profit != null ? `<br><span style="font-size:11px;color:${r.profit>=0?'var(--success)':'var(--danger)'}">Profit: ${formatINR(r.profit)}</span>` : ''}</td>
+    </tr>`).join('');
+}
+
+document.getElementById('product-filter').addEventListener('change', (e) => loadLedger(e.target.value));
+
+// Purchase modal
+const purchaseModal = document.getElementById('purchase-modal-bg');
+document.getElementById('purchase-btn').addEventListener('click', () => {
+  document.getElementById('pu-date').value = new Date().toISOString().slice(0, 10);
+  purchaseModal.classList.add('open');
+});
+document.getElementById('purchase-cancel').addEventListener('click', () => purchaseModal.classList.remove('open'));
+purchaseModal.addEventListener('click', (e) => { if (e.target === purchaseModal) purchaseModal.classList.remove('open'); });
+
+document.getElementById('purchase-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const saveBtn = e.target.querySelector('button[type="submit"]');
+  const productId = document.getElementById('pu-product').value;
+  const billFile = document.getElementById('pu-bill').files[0];
+  try {
+    let billUrl = '', billFileName = '';
+    if (billFile) {
+      saveBtn.textContent = 'Bill upload ho raha hai…';
+      saveBtn.disabled = true;
+      billUrl = await uploadFile('purchase-bills', productId, billFile);
+      billFileName = billFile.name;
+    }
+    await recordPurchase({
+      productId,
+      qty: Number(document.getElementById('pu-qty').value),
+      rate: Number(document.getElementById('pu-rate').value),
+      supplier: document.getElementById('pu-supplier').value.trim(),
+      supplierGSTIN: document.getElementById('pu-supplier-gstin').value.trim(),
+      invoiceNumber: document.getElementById('pu-invoice').value.trim(),
+      purchaseDate: document.getElementById('pu-date').value,
+      note: document.getElementById('pu-note').value.trim(),
+      billUrl, billFileName
+    });
+    showToast('Purchase record ho gaya, stock update ho gaya');
+    purchaseModal.classList.remove('open');
+    e.target.reset();
+    loadProducts(); loadLedger(document.getElementById('product-filter').value);
+  } catch (err) {
+    alert('Error: ' + err.message);
+  } finally {
+    saveBtn.textContent = 'Save Purchase';
+    saveBtn.disabled = false;
+  }
+});
+
+// Adjustment modal
+const adjustModal = document.getElementById('adjust-modal-bg');
+document.getElementById('adjust-btn').addEventListener('click', () => adjustModal.classList.add('open'));
+document.getElementById('adjust-cancel').addEventListener('click', () => adjustModal.classList.remove('open'));
+adjustModal.addEventListener('click', (e) => { if (e.target === adjustModal) adjustModal.classList.remove('open'); });
+
+document.getElementById('adjust-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  try {
+    const direction = Number(document.getElementById('ad-direction').value);
+    const qty = Number(document.getElementById('ad-qty').value);
+    await recordAdjustment({
+      productId: document.getElementById('ad-product').value,
+      delta: direction * qty,
+      note: document.getElementById('ad-note').value.trim()
+    });
+    showToast('Adjustment record ho gaya');
+    adjustModal.classList.remove('open');
+    e.target.reset();
+    loadProducts(); loadLedger(document.getElementById('product-filter').value);
+  } catch (err) { alert('Error: ' + err.message); }
+});
+
+loadProducts().then(() => loadLedger());
+</script>
+</body>
+</html>

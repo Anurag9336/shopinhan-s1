@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My Orders — ShopInHand</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="assets/logo.jpg">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="site-header-slot"></div>
+
+<main class="container section" style="max-width:700px">
+  <h2 style="color:var(--navy)">My Orders</h2>
+  <div class="panel">
+    <form id="lookup-form" style="display:flex;gap:10px;align-items:end;flex-wrap:wrap">
+      <div class="field" style="flex:1;min-width:200px;margin-bottom:0">
+        <label>Order karte waqt jo mobile number diya tha</label>
+        <input type="tel" id="phone-input" pattern="[0-9]{10}" maxlength="10" required>
+      </div>
+      <button class="btn" type="submit">Orders Dekhein</button>
+    </form>
+  </div>
+  <div id="orders-list" style="margin-top:20px"></div>
+</main>
+
+<div id="site-footer-slot"></div>
+
+<script type="module">
+import { fetchOrdersByPhone, formatINR, initHeaderWidgets, escapeHtml } from './js/store.js';
+import { renderHeader, renderFooter } from './js/layout.js';
+import { initGA } from './js/seo.js';
+
+initGA();
+renderHeader();
+renderFooter();
+initHeaderWidgets();
+
+const form = document.getElementById('lookup-form');
+const list = document.getElementById('orders-list');
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const phone = document.getElementById('phone-input').value.trim();
+  list.innerHTML = '<p>Loading…</p>';
+  try {
+    const orders = await fetchOrdersByPhone(phone);
+    if (orders.length === 0) { list.innerHTML = '<p>Is number se koi order nahi mila.</p>'; return; }
+    list.innerHTML = orders.map(o => `
+      <div class="panel" style="margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">
+          <div>
+            <strong>Order #${o.id.slice(0, 8)}</strong>
+            <div style="font-size:12px;color:#8a93a6">${o.createdAt?.toDate ? o.createdAt.toDate().toLocaleString('en-IN') : ''}</div>
+          </div>
+          <span class="status-pill status-${o.status}">${o.status}</span>
+        </div>
+        <div style="margin-top:10px;font-size:13px">
+          ${o.items.map(i => `<div>${escapeHtml(i.name)} × ${Number(i.qty)} — ${formatINR(i.price * i.qty)}</div>`).join('')}
+        </div>
+        <div style="margin-top:10px;font-weight:700">Total: ${formatINR(o.amount)}</div>
+        <a href="invoice.html?id=${o.id}" class="btn btn-outline" style="display:inline-block;margin-top:8px;font-size:13px;padding:7px 14px">📄 Tax Invoice</a>
+      </div>`).join('');
+  } catch (err) {
+    console.error(err);
+    list.innerHTML = `<p style="color:#D93025">Error: ${err.message}</p>`;
+  }
+});
+</script>
+</body>
+</html>

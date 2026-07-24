@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard — ShopInHand Admin</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="../assets/logo.jpg">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div class="admin-shell">
+  <nav class="admin-nav" id="admin-nav-slot"></nav>
+  <main class="admin-main">
+    <h2 style="color:var(--navy);margin-top:0">Dashboard</h2>
+    <div class="stat-cards" id="stats">
+      <div class="stat-card"><div class="num">…</div><div class="label">Products</div></div>
+      <div class="stat-card"><div class="num">…</div><div class="label">Total Orders</div></div>
+      <div class="stat-card"><div class="num">…</div><div class="label">Pending Orders</div></div>
+      <div class="stat-card"><div class="num">…</div><div class="label">Total Sales</div></div>
+    </div>
+    <div class="stat-cards" id="stats-retail">
+      <div class="stat-card"><div class="num">…</div><div class="label">Total Purchase Value</div></div>
+      <div class="stat-card"><div class="num">…</div><div class="label">Gross Profit</div></div>
+      <div class="stat-card"><div class="num">…</div><div class="label">Current Inventory Value</div></div>
+      <div class="stat-card"><div class="num">…</div><div class="label">Low Stock Products</div></div>
+      <div class="stat-card"><div class="num">…</div><div class="label">Total GST Collected</div></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px" class="dash-two-col">
+      <div class="panel">
+        <h3 style="margin-top:0">⚠️ Low Stock Products</h3>
+        <table class="table" id="low-stock-table">
+          <thead><tr><th>Product</th><th>Stock</th><th>Min Stock</th></tr></thead>
+          <tbody><tr><td colspan="3">Loading…</td></tr></tbody>
+        </table>
+      </div>
+      <div class="panel">
+        <h3 style="margin-top:0">🏆 Best Selling Products</h3>
+        <table class="table" id="best-selling-table">
+          <thead><tr><th>Product</th><th>Units Sold</th><th>Revenue</th></tr></thead>
+          <tbody><tr><td colspan="3">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="panel">
+      <h3 style="margin-top:0">Recent Orders</h3>
+      <table class="table" id="recent-orders">
+        <thead><tr><th>Order</th><th>Customer</th><th>Amount</th><th>Status</th></tr></thead>
+        <tbody><tr><td colspan="4">Loading…</td></tr></tbody>
+      </table>
+    </div>
+  </main>
+</div>
+
+<style>
+@media(max-width:860px){ .dash-two-col{grid-template-columns:1fr !important} }
+</style>
+
+<script type="module">
+import { requireAdmin, renderAdminNav } from '../js/admin-guard.js';
+import { db, formatINR, fetchAllProductCosts, fetchStockMovements, escapeHtml } from '../js/store.js';
+import { collection, getDocs, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+await requireAdmin();
+renderAdminNav('dashboard');
+
+async function load() {
+  const productsSnap = await getDocs(collection(db, 'products'));
+  const products = productsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const ordersSnap = await getDocs(collection(db, 'orders'));
+  const orders = ordersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const pending = orders.filter(o => o.status === 'pending').length;
+  const totalSales = orders.filter(o => o.status !== 'cancelled').reduce((s, o) => s + (o.amount || 0), 0);
+
+  document.querySelectorAll('#stats .stat-card .num')[0].textContent = productsSnap.size;
+  document.querySelectorAll('#stats .stat-card .num')[1].textContent = orders.length;
+  document.querySelectorAll('#stats .stat-card .num')[2].textContent = pending;
+  document.querySelectorAll('#stats .stat-card .num')[3].textContent = formatINR(totalSales);
+
+  // ---- Retail stats: purchase value, gross profit, inventory value, low stock ----
+  const costs = await fetchAllProductCosts();
+  const movements = await fetchStockMovements();
+
+  const totalPurchaseValue = movements
+    .filter(m => m.type === 'purchase')
+    .reduce((s, m) => s + Number(m.qty || 0) * Number(m.rate || 0), 0);
+
+  const grossProfit = movements
+    .filter(m => m.type === 'sale')
+    .reduce((s, m) => s + Number(m.profit || 0), 0);
+
+  const inventoryValue = products.reduce((s, p) => s + Number(p.stock || 0) * Number(costs[p.id] || 0), 0);
+
+  const lowStockProducts = products.filter(p => Number(p.stock || 0) <= Number(p.minStock ?? 5));
+
+  document.querySelectorAll('#stats-retail .stat-card .num')[0].textContent = formatINR(totalPurchaseValue);
+  document.querySelectorAll('#stats-retail .stat-card .num')[1].textContent = formatINR(grossProfit);
+  document.querySelectorAll('#stats-retail .stat-card .num')[2].textContent = formatINR(inventoryValue);
+  document.querySelectorAll('#stats-retail .stat-card .num')[3].textContent = lowStockProducts.length;
+
+  const totalGSTCollected = orders
+    .filter(o => o.status !== 'cancelled' && o.gstBreakup)
+    .reduce((s, o) => s + Number(o.gstBreakup.totalGST || 0), 0);
+  document.querySelectorAll('#stats-retail .stat-card .num')[4].textContent = formatINR(totalGSTCollected);
+
+  // ---- Low stock table ----
+  const lowStockTbody = document.querySelector('#low-stock-table tbody');
+  lowStockTbody.innerHTML = lowStockProducts.length
+    ? lowStockProducts.map(p => `<tr><td>${escapeHtml(p.name)}</td><td style="color:var(--danger);font-weight:700">${p.stock ?? 0}</td><td>${p.minStock ?? 5}</td></tr>`).join('')
+    : '<tr><td colspan="3">Sab products ka stock theek hai 👍</td></tr>';
+
+  // ---- Best selling table (aggregate sale movements by product) ----
+  const salesByProduct = {};
+  movements.filter(m => m.type === 'sale').forEach(m => {
+    const key = m.productId;
+    if (!salesByProduct[key]) salesByProduct[key] = { name: m.productName, units: 0, revenue: 0 };
+    salesByProduct[key].units += Math.abs(Number(m.qty || 0));
+    salesByProduct[key].revenue += Math.abs(Number(m.qty || 0)) * Number(m.rate || 0);
+  });
+  const bestSelling = Object.values(salesByProduct).sort((a, b) => b.units - a.units).slice(0, 5);
+  const bestSellingTbody = document.querySelector('#best-selling-table tbody');
+  bestSellingTbody.innerHTML = bestSelling.length
+    ? bestSelling.map(p => `<tr><td>${escapeHtml(p.name)}</td><td>${p.units}</td><td>${formatINR(p.revenue)}</td></tr>`).join('')
+    : '<tr><td colspan="3">Abhi tak koi sale nahi hui.</td></tr>';
+
+  // ---- Recent orders ----
+  const recentQ = query(collection(db, 'orders'), orderBy('createdAt', 'desc'), limit(8));
+  const recentSnap = await getDocs(recentQ);
+  const tbody = document.querySelector('#recent-orders tbody');
+  if (recentSnap.empty) {
+    tbody.innerHTML = '<tr><td colspan="4">Abhi tak koi order nahi hai.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = recentSnap.docs.map(d => {
+    const o = d.data();
+    return `<tr>
+      <td>#${d.id.slice(0,8)}</td>
+      <td>${escapeHtml(o.customer?.name) || '-'}</td>
+      <td>${formatINR(o.amount)}</td>
+      <td><span class="status-pill status-${o.status}">${o.status}</span></td>
+    </tr>`;
+  }).join('');
+}
+load().catch(err => console.error(err));
+</script>
+</body>
+</html>

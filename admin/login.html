@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Login — ShopInHand</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="../assets/logo.jpg">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div class="login-shell">
+  <div class="login-card">
+    <img src="../assets/logo.jpg" alt="ShopInHand">
+    <h2 style="color:var(--navy);margin:0 0 4px">Admin Panel</h2>
+    <p style="font-size:13px;color:#8a93a6;margin:0 0 20px">Products aur orders manage karein</p>
+    <form id="login-form">
+      <div class="field" style="text-align:left"><label>Email</label><input type="email" id="email" required></div>
+      <div class="field" style="text-align:left"><label>Password</label><input type="password" id="password" required></div>
+      <button class="btn btn-block" type="submit">Login</button>
+      <p id="login-error" style="color:#D93025;font-size:13px;margin-top:10px"></p>
+    </form>
+  </div>
+</div>
+
+<script type="module">
+import { app } from '../js/store.js';
+import { ADMIN_EMAILS } from '../js/firebase-config.js';
+import { getAuth, signInWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+const auth = getAuth(app);
+const form = document.getElementById('login-form');
+const errEl = document.getElementById('login-error');
+
+onAuthStateChanged(auth, (user) => {
+  if (user && ADMIN_EMAILS.includes(user.email)) location.href = 'index.html';
+});
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  errEl.textContent = '';
+  const email = document.getElementById('email').value.trim();
+  const password = document.getElementById('password').value;
+  try {
+    const cred = await signInWithEmailAndPassword(auth, email, password);
+    if (!ADMIN_EMAILS.includes(cred.user.email)) {
+      errEl.textContent = 'Yeh account admin access ke liye authorized nahi hai.';
+      await auth.signOut();
+      return;
+    }
+    location.href = 'index.html';
+  } catch (err) {
+    errEl.textContent = 'Login fail: galat email ya password.';
+  }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Checkout — ShopInHand</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="assets/logo.jpg">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+</head>
+<body>
+<div id="site-header-slot"></div>
+
+<main class="container section">
+  <h2 style="color:var(--navy);margin-bottom:20px">Checkout</h2>
+  <div class="checkout-grid">
+    <form class="panel" id="checkout-form">
+      <h3 style="margin-top:0">Delivery Address</h3>
+      <div class="two-col">
+        <div class="field"><label>Poora Naam</label><input type="text" name="name" required></div>
+        <div class="field"><label>Mobile Number</label><input type="tel" name="phone" pattern="[0-9]{10}" maxlength="10" required></div>
+      </div>
+      <div class="field"><label>Email (optional)</label><input type="email" name="email"></div>
+      <div class="field"><label>Poora Address</label><textarea name="address" rows="3" required></textarea></div>
+      <div class="two-col">
+        <div class="field"><label>City</label><input type="text" name="city" required></div>
+        <div class="field"><label>Pincode</label><input type="text" name="pincode" pattern="[0-9]{6}" maxlength="6" required></div>
+      </div>
+      <div class="field"><label>State</label>
+        <select name="state" required>
+          <option value="">Select state</option>
+          <option>Andhra Pradesh</option><option>Arunachal Pradesh</option><option>Assam</option><option>Bihar</option>
+          <option>Chhattisgarh</option><option>Delhi</option><option>Goa</option><option>Gujarat</option>
+          <option>Haryana</option><option>Himachal Pradesh</option><option>Jharkhand</option><option>Karnataka</option>
+          <option>Kerala</option><option>Madhya Pradesh</option><option>Maharashtra</option><option>Manipur</option>
+          <option>Meghalaya</option><option>Mizoram</option><option>Nagaland</option><option>Odisha</option>
+          <option>Punjab</option><option>Rajasthan</option><option>Sikkim</option><option>Tamil Nadu</option>
+          <option>Telangana</option><option>Tripura</option><option>Uttar Pradesh</option><option>Uttarakhand</option>
+          <option>West Bengal</option><option>Jammu and Kashmir</option><option>Ladakh</option><option>Chandigarh</option>
+          <option>Puducherry</option>
+        </select>
+      </div>
+
+      <h3>Payment Method</h3>
+      <div class="field">
+        <label style="display:flex;align-items:center;gap:8px;font-weight:500;margin-bottom:10px">
+          <input type="radio" name="paymentMethod" value="ONLINE" checked style="width:auto"> Online Pay — UPI / Card / Netbanking (Razorpay)
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;font-weight:500">
+          <input type="radio" name="paymentMethod" value="COD" style="width:auto"> Cash on Delivery
+        </label>
+      </div>
+
+      <button type="submit" class="btn btn-block" id="pay-btn" style="margin-top:10px">Place Order</button>
+      <p id="checkout-error" style="color:#D93025;font-size:13px;margin-top:10px"></p>
+    </form>
+
+    <div class="panel" id="order-summary">
+      <h3 style="margin-top:0">Order Summary</h3>
+      <div id="summary-items"></div>
+      <div id="summary-totals"></div>
+    </div>
+  </div>
+</main>
+
+<div id="site-footer-slot"></div>
+
+<script type="module">
+import { getCart, cartTotal, deliveryFee, formatINR, clearCart, initHeaderWidgets, createRazorpayOrderSecure, placeOrder } from './js/store.js';
+import { renderHeader, renderFooter } from './js/layout.js';
+import { RAZORPAY_KEY_ID, STORE_SETTINGS } from './js/firebase-config.js';
+import { initGA, trackEvent } from './js/seo.js';
+import { computeOrderGST } from './js/gst.js';
+
+initGA();
+renderHeader();
+renderFooter();
+initHeaderWidgets();
+
+const cart = getCart();
+if (cart.length === 0) {
+  document.querySelector('main').innerHTML = `<div class="empty-state"><p>Aapka cart khaali hai.</p><a href="index.html" class="btn">Shop Karein</a></div>`;
+} else {
+  trackEvent('begin_checkout', {
+    currency: 'INR',
+    value: cartTotal(cart),
+    items: cart.map(i => ({ item_id: i.id, item_name: i.name, price: i.price, quantity: i.qty }))
+  });
+}
+
+const subtotal = cartTotal(cart);
+const fee = deliveryFee(subtotal);
+const total = subtotal + fee;
+
+document.getElementById('summary-items').innerHTML = cart.map(i => `
+  <div class="summary-row"><span>${i.name} × ${i.qty}</span><span>${formatINR(i.price * i.qty)}</span></div>
+`).join('');
+
+function renderTotals(buyerState) {
+  const gst = computeOrderGST(cart, buyerState);
+  const gstRows = buyerState
+    ? (gst.taxType === 'IGST'
+        ? `<div class="summary-row" style="font-size:12px;color:#4b5673"><span>IGST (included above)</span><span>${formatINR(gst.totalIGST)}</span></div>`
+        : `<div class="summary-row" style="font-size:12px;color:#4b5673"><span>CGST + SGST (included above)</span><span>${formatINR(gst.totalCGST)} + ${formatINR(gst.totalSGST)}</span></div>`)
+    : `<div class="summary-row" style="font-size:12px;color:#8a93a6"><span colspan="2">State select karein GST breakup dekhne ke liye</span></div>`;
+  document.getElementById('summary-totals').innerHTML = `
+    <div class="summary-row"><span>Subtotal</span><span>${formatINR(subtotal)}</span></div>
+    <div class="summary-row"><span>Delivery</span><span>${fee === 0 ? 'FREE' : formatINR(fee)}</span></div>
+    <div class="summary-row total"><span>Total</span><span>${formatINR(total)}</span></div>
+    ${gstRows}
+    <p style="font-size:11px;color:#8a93a6;margin-top:6px">Prices GST-inclusive hain — total ismein koi extra tax add nahi hota, yeh sirf tax breakup dikhata hai (GSTIN: ${STORE_SETTINGS.gstin}).</p>
+  `;
+}
+renderTotals('');
+document.querySelector('select[name="state"]').addEventListener('change', (e) => renderTotals(e.target.value));
+
+const form = document.getElementById('checkout-form');
+const payBtn = document.getElementById('pay-btn');
+const errEl = document.getElementById('checkout-error');
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  errEl.textContent = '';
+  payBtn.disabled = true; payBtn.textContent = 'Processing…';
+  const fd = new FormData(form);
+  const customer = {
+    name: fd.get('name'), phone: fd.get('phone'), email: fd.get('email') || '',
+    address: fd.get('address'), city: fd.get('city'), pincode: fd.get('pincode'), state: fd.get('state')
+  };
+  const paymentMethod = fd.get('paymentMethod');
+  // SECURITY: only product id + qty are sent — price/amount/GST are
+  // never trusted from the browser. The `placeOrder` Cloud Function
+  // re-fetches real prices and stock from Firestore itself.
+  const items = cart.map(i => ({ id: i.id, qty: i.qty }));
+
+  try {
+    if (paymentMethod === 'COD') {
+      const orderId = await placeOrder({ items, customer, paymentMethod: 'COD' });
+      clearCart();
+      location.href = `order-success.html?id=${orderId}`;
+      return;
+    }
+
+    // ---- Online payment: server creates the Razorpay order (with a
+    // server-verified amount) BEFORE Checkout opens, so the amount can't
+    // be tampered with by editing anything in the browser. ----
+    const rzpOrder = await createRazorpayOrderSecure(items);
+    const rzp = new Razorpay({
+      key: RAZORPAY_KEY_ID,
+      order_id: rzpOrder.orderId,
+      amount: rzpOrder.amount,
+      currency: rzpOrder.currency,
+      name: STORE_SETTINGS.name,
+      description: 'Order payment',
+      image: 'assets/logo.jpg',
+      prefill: { name: customer.name, contact: customer.phone, email: customer.email },
+      theme: { color: '#0E2A5E' },
+      handler: async function (response) {
+        try {
+          const orderId = await placeOrder({
+            items, customer, paymentMethod: 'ONLINE',
+            razorpay: {
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature
+            }
+          });
+          clearCart();
+          location.href = `order-success.html?id=${orderId}`;
+        } catch (err) {
+          errEl.textContent = 'Payment verify nahi ho paya: ' + err.message;
+          payBtn.disabled = false; payBtn.textContent = 'Place Order';
+        }
+      },
+      modal: {
+        ondismiss: function () {
+          payBtn.disabled = false; payBtn.textContent = 'Place Order';
+        }
+      }
+    });
+    rzp.on('payment.failed', function (resp) {
+      errEl.textContent = 'Payment fail ho gaya: ' + resp.error.description;
+      payBtn.disabled = false; payBtn.textContent = 'Place Order';
+    });
+    rzp.open();
+  } catch (err) {
+    console.error(err);
+    errEl.textContent = 'Kuch galat ho gaya: ' + err.message;
+    payBtn.disabled = false; payBtn.textContent = 'Place Order';
+  }
+});
+</script>
+</body>
+</html>

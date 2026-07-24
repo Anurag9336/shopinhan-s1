@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ShopInHand — Poora Bazaar, In Your Hand | Online Stationery Store</title>
+<meta name="description" content="Pens, notebooks, files, art & office supplies — order online, fast delivery.">
+<!-- Open Graph / WhatsApp / Facebook share preview (static fallback — these
+     crawlers don't run JS, so real tags must live directly in the HTML) -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="ShopInHand">
+<meta property="og:title" content="ShopInHand — Poora Bazaar, In Your Hand">
+<meta property="og:description" content="Pens, notebooks, files, art & office supplies — order online, fast delivery.">
+<meta property="og:image" content="assets/logo.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="ShopInHand — Poora Bazaar, In Your Hand">
+<meta name="twitter:description" content="Pens, notebooks, files, art & office supplies — order online, fast delivery.">
+<link rel="canonical" href="index.html">
+<link rel="icon" href="assets/logo.jpg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div id="site-header-slot"></div>
+
+<section class="hero">
+  <div class="hero-art"></div>
+  <div class="container">
+    <div>
+      <h1>Har cheez <span>ek click</span> mein.<br>Poora Bazaar, In Your Hand.</h1>
+      <p>Pens, notebooks, files, art supplies aur office ka saara stationery — ghar baithe order karein, jaldi delivery paayein.</p>
+      <a href="#shop" class="btn">Ab Shop Karein</a>
+    </div>
+    <div></div>
+  </div>
+</section>
+<div class="awning-divider"></div>
+
+<main class="container section" id="shop">
+  <div class="section-head">
+    <div><span class="eyebrow">Stationery Store</span><h2 id="grid-title">Sabhi Products</h2></div>
+  </div>
+  <div id="product-grid" class="grid">
+    <p>Loading products…</p>
+  </div>
+</main>
+
+<div id="site-footer-slot"></div>
+
+<script type="module">
+import { fetchProducts, fetchCategories, addToCart, formatINR, initHeaderWidgets, escapeHtml } from './js/store.js';
+import { renderHeader, renderFooter, renderCategoryStrip } from './js/layout.js';
+import { initGA } from './js/seo.js';
+import { SITE_URL } from './js/firebase-config.js';
+
+initGA();
+
+const params = new URLSearchParams(location.search);
+const activeCategory = params.get('category') || '';
+const searchQuery = (params.get('q') || '').trim().toLowerCase();
+
+renderHeader(activeCategory);
+renderFooter();
+initHeaderWidgets();
+
+// Organization + WebSite structured data (helps Google understand the
+// store as an entity, and enables the sitewide search box in results).
+const orgSchema = document.createElement('script');
+orgSchema.type = 'application/ld+json';
+orgSchema.textContent = JSON.stringify({
+  '@context': 'https://schema.org/',
+  '@type': 'Organization',
+  name: 'ShopInHand',
+  url: SITE_URL,
+  logo: `${SITE_URL}/assets/logo.jpg`
+});
+document.head.appendChild(orgSchema);
+
+const grid = document.getElementById('product-grid');
+const titleEl = document.getElementById('grid-title');
+
+function cardHtml(p) {
+  const off = p.mrp && p.mrp > p.price ? Math.round((1 - p.price / p.mrp) * 100) : 0;
+  const outOfStock = (p.stock ?? 1) <= 0;
+  return `
+  <div class="card">
+    <a href="product.html?id=${p.id}" class="thumb">
+      <img src="${p.image || 'assets/placeholder.svg'}" alt="${escapeHtml(p.name)}" loading="lazy">
+    </a>
+    <div class="card-body">
+      <a href="product.html?id=${p.id}"><h3>${escapeHtml(p.name)}</h3></a>
+      <div class="price-row">
+        <span class="price">${formatINR(p.price)}</span>
+        ${p.mrp && p.mrp > p.price ? `<span class="mrp">${formatINR(p.mrp)}</span><span class="off">${off}% off</span>` : ''}
+      </div>
+      ${outOfStock ? '<span class="badge-stock">Out of stock</span>' : ''}
+      <button class="btn add-btn" ${outOfStock ? 'disabled' : ''} data-id="${p.id}">Add to Cart</button>
+    </div>
+  </div>`;
+}
+
+async function load() {
+  try {
+    let products = await fetchProducts({ category: activeCategory || null });
+    if (searchQuery) {
+      products = products.filter(p => p.name?.toLowerCase().includes(searchQuery));
+      titleEl.textContent = `"${params.get('q')}" ke results`;
+    } else if (activeCategory) {
+      titleEl.textContent = activeCategory;
+    }
+    if (products.length === 0) {
+      grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1">
+        <p>Koi product nahi mila. ${searchQuery ? 'Kuch aur try karein.' : 'Admin panel se products add karein.'}</p></div>`;
+      return;
+    }
+    grid.innerHTML = products.map(cardHtml).join('');
+    grid.querySelectorAll('.add-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const p = products.find(x => x.id === btn.dataset.id);
+        addToCart(p, 1); // fires its own GA4 add_to_cart event (see js/store.js)
+      });
+    });
+  } catch (err) {
+    console.error(err);
+    grid.innerHTML = `<p style="color:#D93025">Products load nahi ho paaye. Firebase config check karein (js/firebase-config.js). Error: ${err.message}</p>`;
+  }
+}
+
+fetchCategories().then(cats => renderCategoryStrip(cats, activeCategory)).catch(() => {});
+load();
+</script>
+</body>
+</html>

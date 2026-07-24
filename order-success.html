@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Order Confirmed — ShopInHand</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="assets/logo.jpg">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="site-header-slot"></div>
+
+<main class="container section" style="max-width:600px">
+  <div class="panel" style="text-align:center">
+    <div style="font-size:52px">✅</div>
+    <h2 style="color:var(--navy)">Order Confirm ho gaya!</h2>
+    <p style="color:#4b5673">Aapka order successfully place ho gaya hai. Confirmation details neeche hain.</p>
+    <div id="order-details" style="text-align:left;margin-top:20px"></div>
+    <a href="index.html" class="btn" style="margin-top:20px">Shopping Jaari Rakhein</a>
+  </div>
+</main>
+
+<div id="site-footer-slot"></div>
+
+<script type="module">
+import { formatINR, initHeaderWidgets, escapeHtml } from './js/store.js';
+import { renderHeader, renderFooter } from './js/layout.js';
+import { db } from './js/store.js';
+import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { initGA } from './js/seo.js';
+
+initGA();
+renderHeader();
+renderFooter();
+initHeaderWidgets();
+
+const id = new URLSearchParams(location.search).get('id');
+const box = document.getElementById('order-details');
+
+async function load() {
+  if (!id) { box.innerHTML = ''; return; }
+  const snap = await getDoc(doc(db, 'orders', id));
+  if (!snap.exists()) { box.innerHTML = '<p>Order details nahi mile.</p>'; return; }
+  const o = snap.data();
+  box.innerHTML = `
+    <p><strong>Order ID:</strong> ${id}</p>
+    <p><strong>Naam:</strong> ${escapeHtml(o.customer.name)}</p>
+    <p><strong>Delivery Address:</strong> ${escapeHtml(o.customer.address)}, ${escapeHtml(o.customer.city)} - ${escapeHtml(o.customer.pincode)}</p>
+    <p><strong>Payment:</strong> ${o.paymentMethod === 'COD' ? 'Cash on Delivery' : 'Paid Online'}</p>
+    <p><strong>Total:</strong> ${formatINR(o.amount)}</p>
+    <p><a href="invoice.html?id=${id}" class="btn btn-outline" style="display:inline-block;margin-top:6px">📄 View Tax Invoice</a></p>
+    <p style="font-size:13px;color:#8a93a6">Order status "My Orders" page mein apne mobile number se track kar sakte hain.</p>`;
+}
+load();
+</script>
+</body>
+</html>

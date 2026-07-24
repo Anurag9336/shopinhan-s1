@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tax Invoice — ShopInHand</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="assets/logo.jpg">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<style>
+  .invoice-box{max-width:800px;margin:24px auto;background:#fff;border:1px solid var(--line);border-radius:10px;padding:32px}
+  .invoice-head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid var(--navy);padding-bottom:16px;margin-bottom:16px}
+  .invoice-head h1{font-size:20px;color:var(--navy);margin:0 0 4px}
+  .invoice-parties{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px;font-size:13px}
+  .invoice-parties h4{margin:0 0 6px;color:var(--navy);font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+  table.inv-table{width:100%;border-collapse:collapse;font-size:12.5px;margin-bottom:16px}
+  table.inv-table th, table.inv-table td{border:1px solid var(--line);padding:7px 8px;text-align:left}
+  table.inv-table th{background:var(--mist)}
+  table.inv-table td.num, table.inv-table th.num{text-align:right}
+  .inv-totals{margin-left:auto;max-width:320px;font-size:13px}
+  .inv-totals .row{display:flex;justify-content:space-between;padding:4px 0}
+  .inv-totals .grand{font-weight:700;font-size:16px;border-top:2px solid var(--navy);margin-top:6px;padding-top:8px}
+  .inv-words{font-size:13px;margin:4px 0 20px;padding:10px 12px;background:var(--mist);border-radius:6px}
+  .inv-bottom{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:24px;font-size:13px}
+  .inv-bottom h4{margin:0 0 6px;color:var(--navy);font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+  .inv-sign{text-align:right}
+  .inv-sign .sign-space{height:50px}
+  .inv-sign .sign-line{border-top:1px solid var(--line);padding-top:6px;font-size:12px;color:#4b5673}
+  .no-print{margin-bottom:16px}
+  @media print{
+    .no-print{display:none !important}
+    body{background:#fff}
+    .invoice-box{border:none;margin:0;padding:0}
+  }
+</style>
+</head>
+<body>
+<div id="site-header-slot" class="no-print"></div>
+
+<main class="container section no-print" style="padding-bottom:0">
+  <button class="btn" id="print-btn">🖨️ Print / Save as PDF</button>
+</main>
+
+<div class="invoice-box" id="invoice-root">
+  <p>Loading invoice…</p>
+</div>
+
+<div id="site-footer-slot" class="no-print"></div>
+
+<script type="module">
+import { db, formatINR, initHeaderWidgets, escapeHtml } from './js/store.js';
+import { renderHeader, renderFooter } from './js/layout.js';
+import { STORE_SETTINGS } from './js/firebase-config.js';
+import { groupByHSN, amountToWordsINR } from './js/gst.js';
+import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+renderHeader();
+renderFooter();
+initHeaderWidgets();
+document.getElementById('print-btn').addEventListener('click', () => window.print());
+
+const id = new URLSearchParams(location.search).get('id');
+const root = document.getElementById('invoice-root');
+
+async function load() {
+  if (!id) { root.innerHTML = '<p>Invalid invoice link.</p>'; return; }
+  const snap = await getDoc(doc(db, 'orders', id));
+  if (!snap.exists()) { root.innerHTML = '<p>Order nahi mila.</p>'; return; }
+  const o = snap.data();
+  const g = o.gstBreakup;
+  const date = o.createdAt?.toDate ? o.createdAt.toDate().toLocaleDateString('en-IN') : '-';
+
+  if (!g) {
+    root.innerHTML = `
+      <p>Yeh order GST feature add hone se pehle place hua tha, isliye iska tax breakup available nahi hai.</p>
+      <p><strong>Order ID:</strong> ${id}<br><strong>Total:</strong> ${formatINR(o.amount)}</p>`;
+    return;
+  }
+
+  root.innerHTML = `
+    <div class="invoice-head">
+      <div>
+        <h1>${STORE_SETTINGS.name}</h1>
+        <p style="margin:0;font-size:13px;color:#4b5673">${STORE_SETTINGS.address}<br>GSTIN: ${STORE_SETTINGS.gstin}<br>State: ${STORE_SETTINGS.sellerState}</p>
+      </div>
+      <div style="text-align:right">
+        <h2 style="margin:0;color:var(--navy);font-size:18px">TAX INVOICE</h2>
+        <p style="margin:4px 0 0;font-size:13px">Invoice / Order #: ${id.slice(0,10).toUpperCase()}<br>Date: ${date}</p>
+      </div>
+    </div>
+
+    <div class="invoice-parties">
+      <div>
+        <h4>Billed To</h4>
+        <p style="margin:0">${escapeHtml(o.customer.name)}<br>${escapeHtml(o.customer.address)}<br>${escapeHtml(o.customer.city)}, ${escapeHtml(o.customer.state) || '-'} - ${escapeHtml(o.customer.pincode)}<br>Ph: ${escapeHtml(o.customer.phone)}</p>
+      </div>
+      <div>
+        <h4>Payment</h4>
+        <p style="margin:0">Method: ${o.paymentMethod === 'COD' ? 'Cash on Delivery' : 'Paid Online'}<br>Status: ${escapeHtml(o.status)}<br>Tax Type: ${escapeHtml(g.taxType)}</p>
+      </div>
+    </div>
+
+    <table class="inv-table">
+      <thead>
+        <tr>
+          <th>Item</th><th>HSN</th><th class="num">Qty</th><th class="num">Rate (incl. GST)</th>
+          <th class="num">Taxable Value</th><th class="num">GST %</th>
+          ${g.taxType === 'IGST' ? '<th class="num">IGST</th>' : '<th class="num">CGST</th><th class="num">SGST</th>'}
+          <th class="num">Line Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${g.lineItems.map(li => `
+          <tr>
+            <td>${escapeHtml(li.name)}</td>
+            <td>${escapeHtml(li.hsnCode) || '-'}</td>
+            <td class="num">${Number(li.qty)}</td>
+            <td class="num">${formatINR(li.price)}</td>
+            <td class="num">${formatINR(li.taxableValue)}</td>
+            <td class="num">${li.gstRate}%</td>
+            ${g.taxType === 'IGST'
+              ? `<td class="num">${formatINR(li.igst)}</td>`
+              : `<td class="num">${formatINR(li.cgst)}</td><td class="num">${formatINR(li.sgst)}</td>`}
+            <td class="num">${formatINR(li.lineTotal)}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+
+    <div class="inv-totals">
+      <div class="row"><span>Taxable Value</span><span>${formatINR(g.totalTaxable)}</span></div>
+      ${g.taxType === 'IGST'
+        ? `<div class="row"><span>IGST</span><span>${formatINR(g.totalIGST)}</span></div>`
+        : `<div class="row"><span>CGST</span><span>${formatINR(g.totalCGST)}</span></div><div class="row"><span>SGST</span><span>${formatINR(g.totalSGST)}</span></div>`}
+      <div class="row"><span>Delivery</span><span>${o.deliveryFee ? formatINR(o.deliveryFee) : 'FREE'}</span></div>
+      <div class="row grand"><span>Grand Total</span><span>${formatINR(o.amount)}</span></div>
+    </div>
+
+    <table class="inv-table">
+      <thead>
+        <tr>
+          <th>HSN/SAC</th><th class="num">Taxable Value</th>
+          ${g.taxType === 'IGST'
+            ? '<th class="num">IGST Rate</th><th class="num">IGST Amount</th>'
+            : '<th class="num">CGST Rate</th><th class="num">CGST Amount</th><th class="num">SGST Rate</th><th class="num">SGST Amount</th>'}
+          <th class="num">Total Tax</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${groupByHSN(g.lineItems).map(h => `
+          <tr>
+            <td>${escapeHtml(h.hsnCode)}</td>
+            <td class="num">${formatINR(h.taxableValue)}</td>
+            ${g.taxType === 'IGST'
+              ? `<td class="num">${h.gstRate}%</td><td class="num">${formatINR(h.igst)}</td>`
+              : `<td class="num">${(h.gstRate / 2)}%</td><td class="num">${formatINR(h.cgst)}</td><td class="num">${(h.gstRate / 2)}%</td><td class="num">${formatINR(h.sgst)}</td>`}
+            <td class="num">${formatINR(h.totalTax)}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+
+    <div class="inv-words"><strong>Total Amount (in words):</strong> ${amountToWordsINR(o.amount)}</div>
+
+    <div class="inv-bottom">
+      <div>
+        ${STORE_SETTINGS.bank && STORE_SETTINGS.bank.accountNo ? `
+          <h4>Bank Details</h4>
+          <p style="margin:0">Name: ${escapeHtml(STORE_SETTINGS.bank.accountName)}<br>
+          A/C No: ${escapeHtml(STORE_SETTINGS.bank.accountNo)}<br>
+          IFSC: ${escapeHtml(STORE_SETTINGS.bank.ifsc)}<br>
+          Bank: ${escapeHtml(STORE_SETTINGS.bank.bankName)}</p>` : ''}
+      </div>
+      <div class="inv-sign">
+        <div class="sign-space"></div>
+        <div class="sign-line">Authorised Signatory${STORE_SETTINGS.authorisedSignatory ? ' — ' + escapeHtml(STORE_SETTINGS.authorisedSignatory) : ''}<br>For ${STORE_SETTINGS.name}</div>
+      </div>
+    </div>
+
+    <p style="font-size:11px;color:#8a93a6;margin-top:24px">Yeh ek computer-generated invoice hai. Prices GST-inclusive hain. Query ke liye: ${STORE_SETTINGS.phone} / ${STORE_SETTINGS.email}</p>
+  `;
+}
+load().catch(err => { root.innerHTML = `<p style="color:#D93025">Error: ${err.message}</p>`; });
+</script>
+</body>
+</html>
