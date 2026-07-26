@@ -44,25 +44,28 @@
 
 <!-- Purchase Modal -->
 <div class="modal-bg" id="purchase-modal-bg">
-  <div class="modal">
+  <div class="modal" style="max-width:640px">
     <h3>Add Purchase (Stock In)</h3>
-    <p style="font-size:13px;color:#4b5673">Jo saman aap warehouse ke liye khareedte hain, woh yahan record karein.</p>
+    <p style="font-size:13px;color:#4b5673">Ek bill mein multiple products ho to sabko yahan ek saath add karo — invoice number, supplier, date sab shared rahenge.</p>
     <form id="purchase-form">
-      <div class="field"><label>Product</label><select id="pu-product" required></select></div>
-      <div class="two-col">
-        <div class="field"><label>Quantity Purchased</label><input type="number" id="pu-qty" min="1" step="1" required></div>
-        <div class="field"><label>Purchase Cost (₹/unit)</label><input type="number" id="pu-rate" min="0" step="1" required></div>
-      </div>
       <div class="two-col">
         <div class="field"><label>Supplier</label><input type="text" id="pu-supplier" placeholder="e.g. Aggarwal Stationery Wholesale" required></div>
         <div class="field"><label>Supplier GSTIN (optional)</label><input type="text" id="pu-supplier-gstin" placeholder="e.g. 07AAAAA0000A1Z5" maxlength="15"></div>
       </div>
-      <div class="field"><label>Invoice Number</label><input type="text" id="pu-invoice" placeholder="e.g. INV-2026-0142" required></div>
-      <div class="field"><label>Purchase Date</label><input type="date" id="pu-date" required></div>
-      <div class="field">
+      <div class="two-col">
+        <div class="field"><label>Invoice Number</label><input type="text" id="pu-invoice" placeholder="e.g. INV-2026-0142" required></div>
+        <div class="field"><label>Purchase Date</label><input type="date" id="pu-date" required></div>
+      </div>
+
+      <label style="display:block;margin:14px 0 6px;font-weight:600">Items in this bill</label>
+      <div id="pu-items"></div>
+      <button type="button" class="btn btn-outline" id="pu-add-item" style="margin-top:6px">+ Add Another Item</button>
+      <div id="pu-total" style="margin-top:10px;font-weight:700;color:var(--navy)"></div>
+
+      <div class="field" style="margin-top:14px">
         <label>Bill / Invoice Photo ya PDF (proof ke liye — GST checking mein kaam aayega)</label>
         <input type="file" id="pu-bill" accept="image/*,application/pdf">
-        <p style="font-size:12px;color:#8a93a6;margin:4px 0 0">Camera se photo khींच sakte ho ya file choose kar sakte ho. Yeh sirf admin ko dikhega, customer ko kabhi nahi.</p>
+        <p style="font-size:12px;color:#8a93a6;margin:4px 0 0">Ek hi bill photo saare items ke liye attach ho jayegi. Sirf admin ko dikhega, customer ko kabhi nahi.</p>
       </div>
       <div class="field"><label>Note (optional)</label><input type="text" id="pu-note"></div>
       <div style="display:flex;gap:10px;margin-top:16px">
@@ -108,8 +111,7 @@ let products = [];
 async function loadProducts() {
   products = await fetchProducts();
   const costs = await fetchAllProductCosts();
-  const options = products.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
-  document.getElementById('pu-product').innerHTML = options;
+  const options = products.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
   document.getElementById('ad-product').innerHTML = options;
   const filter = document.getElementById('product-filter');
   filter.innerHTML = '<option value="">All products</option>' + options;
@@ -146,10 +148,51 @@ async function loadLedger(productId = '') {
 
 document.getElementById('product-filter').addEventListener('change', (e) => loadLedger(e.target.value));
 
-// Purchase modal
+// Purchase modal — item row management
 const purchaseModal = document.getElementById('purchase-modal-bg');
+const itemsWrap = document.getElementById('pu-items');
+let puRowCount = 0;
+
+function productOptionsHtml() {
+  return products.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+}
+
+function addItemRow() {
+  puRowCount++;
+  const row = document.createElement('div');
+  row.className = 'pu-item-row';
+  row.style.cssText = 'display:flex;gap:8px;align-items:flex-start;margin-bottom:8px';
+  row.innerHTML = `
+    <select class="pu-item-product" style="flex:2;padding:8px 10px;border:1.5px solid var(--line);border-radius:7px">${productOptionsHtml()}</select>
+    <input type="number" class="pu-item-qty" placeholder="Qty" min="1" step="1" required style="flex:1;padding:8px 10px;border:1.5px solid var(--line);border-radius:7px">
+    <input type="number" class="pu-item-rate" placeholder="₹/unit" min="0" step="1" required style="flex:1;padding:8px 10px;border:1.5px solid var(--line);border-radius:7px">
+    <button type="button" class="btn btn-outline pu-item-remove" style="padding:8px 12px">✕</button>
+  `;
+  row.querySelector('.pu-item-remove').addEventListener('click', () => {
+    if (itemsWrap.children.length > 1) { row.remove(); updatePuTotal(); }
+  });
+  row.querySelector('.pu-item-qty').addEventListener('input', updatePuTotal);
+  row.querySelector('.pu-item-rate').addEventListener('input', updatePuTotal);
+  itemsWrap.appendChild(row);
+}
+
+function updatePuTotal() {
+  let total = 0;
+  itemsWrap.querySelectorAll('.pu-item-row').forEach(row => {
+    const qty = Number(row.querySelector('.pu-item-qty').value) || 0;
+    const rate = Number(row.querySelector('.pu-item-rate').value) || 0;
+    total += qty * rate;
+  });
+  document.getElementById('pu-total').textContent = total > 0 ? `Bill Total: ${formatINR(total)}` : '';
+}
+
+document.getElementById('pu-add-item').addEventListener('click', addItemRow);
+
 document.getElementById('purchase-btn').addEventListener('click', () => {
   document.getElementById('pu-date').value = new Date().toISOString().slice(0, 10);
+  itemsWrap.innerHTML = '';
+  addItemRow();
+  updatePuTotal();
   purchaseModal.classList.add('open');
 });
 document.getElementById('purchase-cancel').addEventListener('click', () => purchaseModal.classList.remove('open'));
@@ -158,28 +201,37 @@ purchaseModal.addEventListener('click', (e) => { if (e.target === purchaseModal)
 document.getElementById('purchase-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const saveBtn = e.target.querySelector('button[type="submit"]');
-  const productId = document.getElementById('pu-product').value;
   const billFile = document.getElementById('pu-bill').files[0];
+  const supplier = document.getElementById('pu-supplier').value.trim();
+  const supplierGSTIN = document.getElementById('pu-supplier-gstin').value.trim();
+  const invoiceNumber = document.getElementById('pu-invoice').value.trim();
+  const purchaseDate = document.getElementById('pu-date').value;
+  const note = document.getElementById('pu-note').value.trim();
+
+  const rows = Array.from(itemsWrap.querySelectorAll('.pu-item-row')).map(row => ({
+    productId: row.querySelector('.pu-item-product').value,
+    qty: Number(row.querySelector('.pu-item-qty').value),
+    rate: Number(row.querySelector('.pu-item-rate').value)
+  }));
+  if (rows.some(r => !r.qty || r.qty <= 0)) { alert('Har item ki quantity 0 se zyada honi chahiye'); return; }
+
   try {
+    saveBtn.disabled = true;
     let billUrl = '', billFileName = '';
     if (billFile) {
       saveBtn.textContent = 'Bill upload ho raha hai…';
-      saveBtn.disabled = true;
-      billUrl = await uploadFile('purchase-bills', productId, billFile);
+      billUrl = await uploadFile('purchase-bills', invoiceNumber || 'bill', billFile);
       billFileName = billFile.name;
     }
-    await recordPurchase({
-      productId,
-      qty: Number(document.getElementById('pu-qty').value),
-      rate: Number(document.getElementById('pu-rate').value),
-      supplier: document.getElementById('pu-supplier').value.trim(),
-      supplierGSTIN: document.getElementById('pu-supplier-gstin').value.trim(),
-      invoiceNumber: document.getElementById('pu-invoice').value.trim(),
-      purchaseDate: document.getElementById('pu-date').value,
-      note: document.getElementById('pu-note').value.trim(),
-      billUrl, billFileName
-    });
-    showToast('Purchase record ho gaya, stock update ho gaya');
+    saveBtn.textContent = `Saving 1/${rows.length}…`;
+    for (let i = 0; i < rows.length; i++) {
+      saveBtn.textContent = `Saving ${i + 1}/${rows.length}…`;
+      await recordPurchase({
+        productId: rows[i].productId, qty: rows[i].qty, rate: rows[i].rate,
+        supplier, supplierGSTIN, invoiceNumber, purchaseDate, note, billUrl, billFileName
+      });
+    }
+    showToast(`${rows.length} item${rows.length > 1 ? 's' : ''} record ho gaye, stock update ho gaya`);
     purchaseModal.classList.remove('open');
     e.target.reset();
     loadProducts(); loadLedger(document.getElementById('product-filter').value);
