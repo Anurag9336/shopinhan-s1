@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Settings — ShopInHand Admin</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="../assets/logo.jpg">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div class="admin-shell">
+  <nav class="admin-nav" id="admin-nav-slot"></nav>
+  <main class="admin-main" style="max-width:640px">
+    <h2 style="color:var(--navy);margin-top:0">Website Settings</h2>
+    <p style="font-size:13px;color:#4b5673;margin-top:-8px">Yahan se store details edit karo — code chhedne ki zaroorat nahi. Save karte hi puri site pe reflect hoga.</p>
+    <form id="settings-form" class="panel">
+      <h3 style="margin-top:0">Store Details</h3>
+      <div class="field"><label>Store Name</label><input type="text" id="st-name" required></div>
+      <div class="field"><label>Tagline</label><input type="text" id="st-tagline"></div>
+      <div class="two-col">
+        <div class="field"><label>Phone</label><input type="text" id="st-phone"></div>
+        <div class="field"><label>WhatsApp Number</label><input type="text" id="st-whatsapp" placeholder="91XXXXXXXXXX"></div>
+      </div>
+      <div class="field"><label>Support Email</label><input type="email" id="st-email"></div>
+      <div class="field"><label>Address</label><textarea id="st-address" rows="2"></textarea></div>
+
+      <h3>Delivery</h3>
+      <div class="two-col">
+        <div class="field"><label>Free Delivery Above (₹)</label><input type="number" id="st-free-above" min="0" step="1"></div>
+        <div class="field"><label>Delivery Fee (₹)</label><input type="number" id="st-delivery-fee" min="0" step="1"></div>
+      </div>
+
+      <h3>GST</h3>
+      <div class="two-col">
+        <div class="field"><label>GSTIN</label><input type="text" id="st-gstin" maxlength="15"></div>
+        <div class="field"><label>Seller State</label><input type="text" id="st-state"></div>
+      </div>
+
+      <h3>Bank Details (invoice pe dikhega)</h3>
+      <div class="two-col">
+        <div class="field"><label>Account Holder Name</label><input type="text" id="st-bank-name"></div>
+        <div class="field"><label>Account Number</label><input type="text" id="st-bank-acc"></div>
+      </div>
+      <div class="two-col">
+        <div class="field"><label>IFSC Code</label><input type="text" id="st-bank-ifsc"></div>
+        <div class="field"><label>Bank Name & Branch</label><input type="text" id="st-bank-branch"></div>
+      </div>
+
+      <button type="submit" class="btn btn-block" style="margin-top:10px">Save Settings</button>
+    </form>
+  </main>
+</div>
+
+<script type="module">
+import { requireAdmin, renderAdminNav } from '../js/admin-guard.js';
+import { showToast, fetchSiteSettings, updateSiteSettings } from '../js/store.js';
+
+await requireAdmin();
+renderAdminNav('settings');
+
+const form = document.getElementById('settings-form');
+
+async function load() {
+  const s = await fetchSiteSettings();
+  if (!s) return;
+  document.getElementById('st-name').value = s.storeName || '';
+  document.getElementById('st-tagline').value = s.tagline || '';
+  document.getElementById('st-phone').value = s.phone || '';
+  document.getElementById('st-whatsapp').value = s.whatsapp || '';
+  document.getElementById('st-email').value = s.email || '';
+  document.getElementById('st-address').value = s.address || '';
+  document.getElementById('st-free-above').value = s.freeDeliveryAbove ?? 499;
+  document.getElementById('st-delivery-fee').value = s.deliveryFee ?? 39;
+  document.getElementById('st-gstin').value = s.gstin || '';
+  document.getElementById('st-state').value = s.sellerState || '';
+  document.getElementById('st-bank-name').value = s.bankAccountName || '';
+  document.getElementById('st-bank-acc').value = s.bankAccountNo || '';
+  document.getElementById('st-bank-ifsc').value = s.bankIfsc || '';
+  document.getElementById('st-bank-branch').value = s.bankName || '';
+}
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = form.querySelector('button[type="submit"]');
+  try {
+    btn.disabled = true;
+    await updateSiteSettings({
+      storeName: document.getElementById('st-name').value.trim(),
+      tagline: document.getElementById('st-tagline').value.trim(),
+      phone: document.getElementById('st-phone').value.trim(),
+      whatsapp: document.getElementById('st-whatsapp').value.trim(),
+      email: document.getElementById('st-email').value.trim(),
+      address: document.getElementById('st-address').value.trim(),
+      freeDeliveryAbove: Number(document.getElementById('st-free-above').value || 0),
+      deliveryFee: Number(document.getElementById('st-delivery-fee').value || 0),
+      gstin: document.getElementById('st-gstin').value.trim(),
+      sellerState: document.getElementById('st-state').value.trim(),
+      bankAccountName: document.getElementById('st-bank-name').value.trim(),
+      bankAccountNo: document.getElementById('st-bank-acc').value.trim(),
+      bankIfsc: document.getElementById('st-bank-ifsc').value.trim(),
+      bankName: document.getElementById('st-bank-branch').value.trim()
+    });
+    showToast('Settings save ho gayi');
+  } catch (err) {
+    alert('Error: ' + err.message);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+load().catch(err => alert('Error loading settings: ' + err.message));
+</script>
+</body>
+</html>

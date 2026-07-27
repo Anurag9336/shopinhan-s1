@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Customers — ShopInHand Admin</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="../assets/logo.jpg">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div class="admin-shell">
+  <nav class="admin-nav" id="admin-nav-slot"></nav>
+  <main class="admin-main">
+    <h2 style="color:var(--navy);margin-top:0">Customers</h2>
+    <p style="font-size:13px;color:#4b5673;margin-top:-8px">Yeh list order history se automatically banti hai — koi alag signup nahi hai (guest checkout).</p>
+    <div class="panel" style="margin-bottom:16px">
+      <input type="text" id="search-box" placeholder="Naam ya phone se search karein…" style="width:100%;padding:9px 12px;border:1.5px solid var(--line);border-radius:7px">
+    </div>
+    <table class="table">
+      <thead><tr><th>Customer</th><th>Phone</th><th>Total Orders</th><th>Total Spent</th><th>Last Order</th><th>Addresses</th></tr></thead>
+      <tbody id="customers-tbody"><tr><td colspan="6">Loading…</td></tr></tbody>
+    </table>
+  </main>
+</div>
+
+<script type="module">
+import { requireAdmin, renderAdminNav } from '../js/admin-guard.js';
+import { formatINR, escapeHtml, fetchCustomers } from '../js/store.js';
+
+await requireAdmin();
+renderAdminNav('customers');
+
+const tbody = document.getElementById('customers-tbody');
+const searchBox = document.getElementById('search-box');
+let customers = [];
+
+function render() {
+  const q = searchBox.value.trim().toLowerCase();
+  const rows = q ? customers.filter(c => (c.name || '').toLowerCase().includes(q) || c.phone.includes(q)) : customers;
+  if (rows.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6">Koi customer nahi mila.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map(c => `
+    <tr>
+      <td>${escapeHtml(c.name) || '-'}</td>
+      <td>${escapeHtml(c.phone)}</td>
+      <td>${c.totalOrders}</td>
+      <td>${formatINR(c.totalSpent)}</td>
+      <td>${c.lastOrderAt ? new Date(c.lastOrderAt).toLocaleDateString('en-IN') : '-'}</td>
+      <td style="font-size:12px;color:#4b5673">${c.addresses.map(escapeHtml).join('<br>')}</td>
+    </tr>`).join('');
+}
+
+searchBox.addEventListener('input', render);
+
+fetchCustomers().then(data => { customers = data; render(); })
+  .catch(err => { tbody.innerHTML = `<tr><td colspan="6" style="color:#D93025">Error: ${err.message}</td></tr>`; });
+</script>
+</body>
+</html>

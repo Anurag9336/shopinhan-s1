@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Categories — ShopInHand Admin</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="../assets/logo.jpg">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div class="admin-shell">
+  <nav class="admin-nav" id="admin-nav-slot"></nav>
+  <main class="admin-main">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <h2 style="color:var(--navy);margin-top:0">Categories</h2>
+      <button class="btn" id="add-cat-btn">+ Add Category</button>
+    </div>
+    <table class="table">
+      <thead><tr><th>Image</th><th>Name</th><th>Parent</th><th>Actions</th></tr></thead>
+      <tbody id="cat-tbody"><tr><td colspan="4">Loading…</td></tr></tbody>
+    </table>
+  </main>
+</div>
+
+<div class="modal-bg" id="cat-modal-bg">
+  <div class="modal">
+    <h3 id="cat-modal-title">Add Category</h3>
+    <form id="cat-form">
+      <input type="hidden" id="cat-id">
+      <div class="field"><label>Name</label><input type="text" id="cat-name" required></div>
+      <div class="field"><label>Parent Category (optional)</label>
+        <select id="cat-parent"><option value="">— None —</option></select>
+      </div>
+      <div class="field">
+        <label>Category Image (optional)</label>
+        <input type="file" id="cat-image-file" accept="image/*">
+      </div>
+      <div style="display:flex;gap:10px;margin-top:16px">
+        <button type="button" class="btn btn-outline btn-block" id="cat-cancel">Cancel</button>
+        <button type="submit" class="btn btn-block">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script type="module">
+import { requireAdmin, renderAdminNav } from '../js/admin-guard.js';
+import { showToast, escapeHtml, fetchCategories, addCategory, updateCategory, deleteCategory, uploadFile, newProductId } from '../js/store.js';
+
+await requireAdmin();
+renderAdminNav('categories');
+
+const tbody = document.getElementById('cat-tbody');
+const modalBg = document.getElementById('cat-modal-bg');
+const form = document.getElementById('cat-form');
+let categories = [];
+
+async function load() {
+  categories = await fetchCategories();
+  const byId = {}; categories.forEach(c => byId[c.id] = c);
+
+  document.getElementById('cat-parent').innerHTML = '<option value="">— None —</option>' +
+    categories.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
+
+  if (categories.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="4">Koi category nahi hai. "+ Add Category" se shuru karein.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = categories.map(c => `
+    <tr>
+      <td>${c.image ? `<img src="${c.image}" style="width:44px;height:44px;object-fit:cover;border-radius:8px">` : '—'}</td>
+      <td>${escapeHtml(c.name)}</td>
+      <td>${c.parentId && byId[c.parentId] ? escapeHtml(byId[c.parentId].name) : '—'}</td>
+      <td>
+        <button class="icon-btn edit-cat" data-id="${c.id}" title="Edit">✏️ Edit</button>
+        <button class="icon-btn delete-cat" data-id="${c.id}" title="Delete">🗑️ Delete</button>
+      </td>
+    </tr>`).join('');
+
+  tbody.querySelectorAll('.edit-cat').forEach(btn => btn.addEventListener('click', () => openModal(byId[btn.dataset.id])));
+  tbody.querySelectorAll('.delete-cat').forEach(btn => btn.addEventListener('click', async () => {
+    if (!confirm('Yeh category delete karni hai? Isse products ki category khaali ho jayegi.')) return;
+    await deleteCategory(btn.dataset.id);
+    showToast('Category delete ho gayi');
+    load();
+  }));
+}
+
+function openModal(cat = null) {
+  form.reset();
+  document.getElementById('cat-modal-title').textContent = cat ? 'Edit Category' : 'Add Category';
+  document.getElementById('cat-id').value = cat ? cat.id : '';
+  document.getElementById('cat-name').value = cat ? cat.name : '';
+  document.getElementById('cat-parent').value = cat && cat.parentId ? cat.parentId : '';
+  modalBg.classList.add('open');
+}
+document.getElementById('add-cat-btn').addEventListener('click', () => openModal());
+document.getElementById('cat-cancel').addEventListener('click', () => modalBg.classList.remove('open'));
+modalBg.addEventListener('click', (e) => { if (e.target === modalBg) modalBg.classList.remove('open'); });
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const saveBtn = e.target.querySelector('button[type="submit"]');
+  const id = document.getElementById('cat-id').value;
+  const name = document.getElementById('cat-name').value.trim();
+  const parentId = document.getElementById('cat-parent').value || null;
+  const imageFile = document.getElementById('cat-image-file').files[0];
+  try {
+    saveBtn.disabled = true;
+    if (id) {
+      const patch = { name, parentId };
+      if (imageFile) {
+        saveBtn.textContent = 'Image upload ho raha hai…';
+        patch.image = await uploadFile('product-images', 'categories/' + id, imageFile);
+      }
+      await updateCategory(id, patch);
+    } else {
+      const newId = newProductId();
+      let image = null;
+      if (imageFile) {
+        saveBtn.textContent = 'Image upload ho raha hai…';
+        image = await uploadFile('product-images', 'categories/' + newId, imageFile);
+      }
+      await addCategory({ name, image, parentId });
+    }
+    showToast('Category save ho gayi');
+    modalBg.classList.remove('open');
+    load();
+  } catch (err) {
+    alert('Error: ' + err.message);
+  } finally {
+    saveBtn.textContent = 'Save';
+    saveBtn.disabled = false;
+  }
+});
+
+load().catch(err => { tbody.innerHTML = `<tr><td colspan="4" style="color:#D93025">Error: ${err.message}</td></tr>`; });
+</script>
+</body>
+</html>

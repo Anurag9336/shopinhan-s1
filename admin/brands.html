@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Brands — ShopInHand Admin</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="../assets/logo.jpg">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div class="admin-shell">
+  <nav class="admin-nav" id="admin-nav-slot"></nav>
+  <main class="admin-main">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <h2 style="color:var(--navy);margin-top:0">Brands</h2>
+      <button class="btn" id="add-brand-btn">+ Add Brand</button>
+    </div>
+    <table class="table">
+      <thead><tr><th>Logo</th><th>Name</th><th>Description</th><th>Status</th><th>Actions</th></tr></thead>
+      <tbody id="brand-tbody"><tr><td colspan="5">Loading…</td></tr></tbody>
+    </table>
+  </main>
+</div>
+
+<div class="modal-bg" id="brand-modal-bg">
+  <div class="modal">
+    <h3 id="brand-modal-title">Add Brand</h3>
+    <form id="brand-form">
+      <input type="hidden" id="brand-id">
+      <div class="field"><label>Name</label><input type="text" id="brand-name" required></div>
+      <div class="field"><label>Description (optional)</label><textarea id="brand-desc" rows="2"></textarea></div>
+      <div class="field"><label>Logo (optional)</label><input type="file" id="brand-logo-file" accept="image/*"></div>
+      <div class="field"><label><input type="checkbox" id="brand-active" checked style="width:auto;margin-right:6px">Active</label></div>
+      <div style="display:flex;gap:10px;margin-top:16px">
+        <button type="button" class="btn btn-outline btn-block" id="brand-cancel">Cancel</button>
+        <button type="submit" class="btn btn-block">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script type="module">
+import { requireAdmin, renderAdminNav } from '../js/admin-guard.js';
+import { showToast, escapeHtml, fetchBrands, addBrand, updateBrand, deleteBrand, uploadFile, newProductId } from '../js/store.js';
+
+await requireAdmin();
+renderAdminNav('brands');
+
+const tbody = document.getElementById('brand-tbody');
+const modalBg = document.getElementById('brand-modal-bg');
+const form = document.getElementById('brand-form');
+let brands = [];
+
+async function load() {
+  brands = await fetchBrands();
+  if (brands.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5">Koi brand nahi hai. "+ Add Brand" se shuru karein.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = brands.map(b => `
+    <tr>
+      <td>${b.logo ? `<img src="${b.logo}" style="width:40px;height:40px;object-fit:cover;border-radius:8px">` : '—'}</td>
+      <td>${escapeHtml(b.name)}</td>
+      <td style="font-size:13px;color:#4b5673">${escapeHtml(b.description) || '—'}</td>
+      <td><span class="status-pill status-${b.active ? 'delivered' : 'cancelled'}">${b.active ? 'Active' : 'Inactive'}</span></td>
+      <td>
+        <button class="icon-btn edit-brand" data-id="${b.id}">Edit</button>
+        <button class="icon-btn danger delete-brand" data-id="${b.id}">Delete</button>
+      </td>
+    </tr>`).join('');
+  tbody.querySelectorAll('.edit-brand').forEach(btn => btn.addEventListener('click', () => openModal(brands.find(b => b.id === btn.dataset.id))));
+  tbody.querySelectorAll('.delete-brand').forEach(btn => btn.addEventListener('click', async () => {
+    if (!confirm('Yeh brand delete karni hai?')) return;
+    await deleteBrand(btn.dataset.id);
+    showToast('Brand delete ho gayi');
+    load();
+  }));
+}
+
+function openModal(b = null) {
+  form.reset();
+  document.getElementById('brand-modal-title').textContent = b ? 'Edit Brand' : 'Add Brand';
+  document.getElementById('brand-id').value = b ? b.id : '';
+  document.getElementById('brand-name').value = b ? b.name : '';
+  document.getElementById('brand-desc').value = b ? b.description : '';
+  document.getElementById('brand-active').checked = b ? b.active : true;
+  modalBg.classList.add('open');
+}
+document.getElementById('add-brand-btn').addEventListener('click', () => openModal());
+document.getElementById('brand-cancel').addEventListener('click', () => modalBg.classList.remove('open'));
+modalBg.addEventListener('click', (e) => { if (e.target === modalBg) modalBg.classList.remove('open'); });
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const saveBtn = e.target.querySelector('button[type="submit"]');
+  const id = document.getElementById('brand-id').value;
+  const name = document.getElementById('brand-name').value.trim();
+  const description = document.getElementById('brand-desc').value.trim();
+  const active = document.getElementById('brand-active').checked;
+  const logoFile = document.getElementById('brand-logo-file').files[0];
+  try {
+    saveBtn.disabled = true;
+    if (id) {
+      const patch = { name, description, active };
+      if (logoFile) { saveBtn.textContent = 'Logo upload ho raha hai…'; patch.logo = await uploadFile('product-images', 'brands/' + id, logoFile); }
+      await updateBrand(id, patch);
+    } else {
+      const newId = newProductId();
+      let logo = null;
+      if (logoFile) { saveBtn.textContent = 'Logo upload ho raha hai…'; logo = await uploadFile('product-images', 'brands/' + newId, logoFile); }
+      await addBrand({ name, description, active, logo });
+    }
+    showToast('Brand save ho gayi');
+    modalBg.classList.remove('open');
+    load();
+  } catch (err) {
+    alert('Error: ' + err.message);
+  } finally {
+    saveBtn.textContent = 'Save';
+    saveBtn.disabled = false;
+  }
+});
+
+load().catch(err => { tbody.innerHTML = `<tr><td colspan="5" style="color:#D93025">Error: ${err.message}</td></tr>`; });
+</script>
+</body>
+</html>

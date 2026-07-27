@@ -22,8 +22,13 @@ export function renderAdminNav(active) {
     <a href="index.html" class="logo-link" style="padding:0 24px 20px"><img src="../assets/logo.jpg" alt="${STORE_SETTINGS.name}"></a>
     <a href="index.html" class="${active === 'dashboard' ? 'active' : ''}">📊 Dashboard</a>
     <a href="products.html" class="${active === 'products' ? 'active' : ''}">🛍️ Products</a>
+    <a href="categories.html" class="${active === 'categories' ? 'active' : ''}">📚 Categories</a>
+    <a href="brands.html" class="${active === 'brands' ? 'active' : ''}">🏷️ Brands</a>
     <a href="inventory.html" class="${active === 'inventory' ? 'active' : ''}">📋 Inventory</a>
+    <a href="suppliers.html" class="${active === 'suppliers' ? 'active' : ''}">🧾 Suppliers</a>
     <a href="orders.html" class="${active === 'orders' ? 'active' : ''}">📦 Orders</a>
+    <a href="customers.html" class="${active === 'customers' ? 'active' : ''}">👤 Customers</a>
+    <a href="settings.html" class="${active === 'settings' ? 'active' : ''}">⚙️ Settings</a>
     <a href="#" id="logout-link">🚪 Logout</a>
     <a href="../index.html" style="margin-top:20px;opacity:.7">← Back to Store</a>
   `;

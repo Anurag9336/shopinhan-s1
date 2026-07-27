@@ -5,8 +5,8 @@
 // (sb_publishable_... or the older "anon public" key). Both are SAFE
 // to be public — never put the "Secret key" (sb_secret_...) here.
 // =====================================================================
-export const SUPABASE_URL = "https://eqdqcdjtnyfulxobavlv.supabase.co";
-export const SUPABASE_ANON_KEY = "sb_publishable_xYMev1T7W8kOwOTuGReotQ_6-n2cCRO";
+export const SUPABASE_URL = "PASTE_YOUR_SUPABASE_PROJECT_URL_HERE";
+export const SUPABASE_ANON_KEY = "PASTE_YOUR_PUBLISHABLE_KEY_HERE";
 
 // Razorpay public key ("Key Id" — starts with rzp_test_ or rzp_live_)
 // Dashboard → Settings → API Keys. Only the Key ID goes here, NEVER the Key Secret.
@@ -14,7 +14,7 @@ export const RAZORPAY_KEY_ID = "PASTE_RAZORPAY_KEY_ID_HERE";
 
 // Email address(es) allowed to log in to /admin — these must also be
 // created as actual users in Supabase Dashboard → Authentication → Users.
-export const ADMIN_EMAILS = ["kushwahapiyush567@gmail.com"];
+export const ADMIN_EMAILS = ["owner@example.com"];
 
 // =====================================================================
 // SITE URL — your real, live domain (no trailing slash). Used for

@@ -17,6 +17,7 @@
       <h2 style="color:var(--navy);margin:0">Inventory</h2>
       <div style="display:flex;gap:10px">
         <button class="btn btn-outline" id="adjust-btn">Stock Adjustment</button>
+        <button class="btn btn-outline" id="return-btn">Return to Supplier</button>
         <button class="btn" id="purchase-btn">+ Add Purchase</button>
       </div>
     </div>
@@ -48,8 +49,11 @@
     <h3>Add Purchase (Stock In)</h3>
     <p style="font-size:13px;color:#4b5673">Ek bill mein multiple products ho to sabko yahan ek saath add karo — invoice number, supplier, date sab shared rahenge.</p>
     <form id="purchase-form">
+      <div class="field"><label>Supplier (list se choose karein, ya neeche naya likhein)</label>
+        <select id="pu-supplier-select"><option value="">— Naya supplier (neeche type karein) —</option></select>
+      </div>
       <div class="two-col">
-        <div class="field"><label>Supplier</label><input type="text" id="pu-supplier" placeholder="e.g. Aggarwal Stationery Wholesale" required></div>
+        <div class="field"><label>Supplier Name</label><input type="text" id="pu-supplier" placeholder="e.g. Aggarwal Stationery Wholesale" required></div>
         <div class="field"><label>Supplier GSTIN (optional)</label><input type="text" id="pu-supplier-gstin" placeholder="e.g. 07AAAAA0000A1Z5" maxlength="15"></div>
       </div>
       <div class="two-col">
@@ -99,20 +103,51 @@
   </div>
 </div>
 
+<!-- Return to Supplier Modal -->
+<div class="modal-bg" id="return-modal-bg">
+  <div class="modal">
+    <h3>Return to Supplier</h3>
+    <p style="font-size:13px;color:#4b5673">Kharaab/galat maal supplier ko wapas kiya to yahan record karein — stock kam hoga.</p>
+    <form id="return-form">
+      <div class="field"><label>Product</label><select id="rt-product" required></select></div>
+      <div class="field"><label>Quantity Returned</label><input type="number" id="rt-qty" min="1" step="1" required></div>
+      <div class="field"><label>Rate (₹/unit, optional)</label><input type="number" id="rt-rate" min="0" step="1" value="0"></div>
+      <div class="field"><label>Reason / Note</label><input type="text" id="rt-note" placeholder="e.g. 5 pens defective, returned to supplier" required></div>
+      <div style="display:flex;gap:10px;margin-top:16px">
+        <button type="button" class="btn btn-outline btn-block" id="return-cancel">Cancel</button>
+        <button type="submit" class="btn btn-block">Save Return</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <script type="module">
 import { requireAdmin, renderAdminNav } from '../js/admin-guard.js';
-import { formatINR, showToast, recordPurchase, recordAdjustment, fetchStockMovements, fetchAllProductCosts, fetchProducts, uploadFile, escapeHtml } from '../js/store.js';
+import { formatINR, showToast, recordPurchase, recordAdjustment, recordReturn, fetchStockMovements, fetchAllProductCosts, fetchProducts, uploadFile, escapeHtml, fetchSuppliers } from '../js/store.js';
 
 await requireAdmin();
 renderAdminNav('inventory');
 
 let products = [];
+let suppliers = [];
+
+async function loadSuppliers() {
+  suppliers = await fetchSuppliers();
+  document.getElementById('pu-supplier-select').innerHTML = '<option value="">— Naya supplier (neeche type karein) —</option>' +
+    suppliers.map(s => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join('');
+}
+document.getElementById('pu-supplier-select').addEventListener('change', (e) => {
+  const s = suppliers.find(x => x.id === e.target.value);
+  document.getElementById('pu-supplier').value = s ? s.name : '';
+  document.getElementById('pu-supplier-gstin').value = s ? s.gstin : '';
+});
 
 async function loadProducts() {
   products = await fetchProducts();
   const costs = await fetchAllProductCosts();
   const options = products.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
   document.getElementById('ad-product').innerHTML = options;
+  document.getElementById('rt-product').innerHTML = options;
   const filter = document.getElementById('product-filter');
   filter.innerHTML = '<option value="">All products</option>' + options;
 
@@ -193,6 +228,7 @@ document.getElementById('purchase-btn').addEventListener('click', () => {
   itemsWrap.innerHTML = '';
   addItemRow();
   updatePuTotal();
+  loadSuppliers();
   purchaseModal.classList.add('open');
 });
 document.getElementById('purchase-cancel').addEventListener('click', () => purchaseModal.classList.remove('open'));
@@ -261,6 +297,28 @@ document.getElementById('adjust-form').addEventListener('submit', async (e) => {
     });
     showToast('Adjustment record ho gaya');
     adjustModal.classList.remove('open');
+    e.target.reset();
+    loadProducts(); loadLedger(document.getElementById('product-filter').value);
+  } catch (err) { alert('Error: ' + err.message); }
+});
+
+// Return to Supplier modal
+const returnModal = document.getElementById('return-modal-bg');
+document.getElementById('return-btn').addEventListener('click', () => returnModal.classList.add('open'));
+document.getElementById('return-cancel').addEventListener('click', () => returnModal.classList.remove('open'));
+returnModal.addEventListener('click', (e) => { if (e.target === returnModal) returnModal.classList.remove('open'); });
+
+document.getElementById('return-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  try {
+    await recordReturn({
+      productId: document.getElementById('rt-product').value,
+      qty: Number(document.getElementById('rt-qty').value),
+      rate: Number(document.getElementById('rt-rate').value) || 0,
+      note: document.getElementById('rt-note').value.trim()
+    });
+    showToast('Return record ho gaya');
+    returnModal.classList.remove('open');
     e.target.reset();
     loadProducts(); loadLedger(document.getElementById('product-filter').value);
   } catch (err) { alert('Error: ' + err.message); }

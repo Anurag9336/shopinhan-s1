@@ -18,7 +18,12 @@
       <div class="stat-card"><div class="num">…</div><div class="label">Products</div></div>
       <div class="stat-card"><div class="num">…</div><div class="label">Total Orders</div></div>
       <div class="stat-card"><div class="num">…</div><div class="label">Pending Orders</div></div>
+      <div class="stat-card"><div class="num">…</div><div class="label">Delivered Orders</div></div>
+      <div class="stat-card"><div class="num">…</div><div class="label">Cancelled Orders</div></div>
       <div class="stat-card"><div class="num">…</div><div class="label">Total Sales</div></div>
+      <div class="stat-card"><div class="num">…</div><div class="label">Today's Sales</div></div>
+      <div class="stat-card"><div class="num">…</div><div class="label">Total Customers</div></div>
+      <div class="stat-card"><div class="num">…</div><div class="label">Out of Stock</div></div>
     </div>
     <div class="stat-cards" id="stats-retail">
       <div class="stat-card"><div class="num">…</div><div class="label">Total Purchase Value</div></div>
@@ -59,7 +64,7 @@
 
 <script type="module">
 import { requireAdmin, renderAdminNav } from '../js/admin-guard.js';
-import { formatINR, fetchAllProductCosts, fetchStockMovements, fetchProducts, fetchAllOrders, escapeHtml } from '../js/store.js';
+import { formatINR, fetchAllProductCosts, fetchStockMovements, fetchProducts, fetchAllOrders, fetchCustomers, escapeHtml } from '../js/store.js';
 
 await requireAdmin();
 renderAdminNav('dashboard');
@@ -68,12 +73,25 @@ async function load() {
   const products = await fetchProducts();
   const orders = await fetchAllOrders();
   const pending = orders.filter(o => o.status === 'pending').length;
+  const delivered = orders.filter(o => o.status === 'delivered').length;
+  const cancelled = orders.filter(o => o.status === 'cancelled').length;
   const totalSales = orders.filter(o => o.status !== 'cancelled').reduce((s, o) => s + (o.amount || 0), 0);
+  const today = new Date().toISOString().slice(0, 10);
+  const todaysSales = orders.filter(o => o.status !== 'cancelled' && (o.createdAt || '').slice(0, 10) === today)
+    .reduce((s, o) => s + (o.amount || 0), 0);
+  const outOfStock = products.filter(p => Number(p.stock || 0) === 0).length;
+  const customers = await fetchCustomers();
 
-  document.querySelectorAll('#stats .stat-card .num')[0].textContent = products.length;
-  document.querySelectorAll('#stats .stat-card .num')[1].textContent = orders.length;
-  document.querySelectorAll('#stats .stat-card .num')[2].textContent = pending;
-  document.querySelectorAll('#stats .stat-card .num')[3].textContent = formatINR(totalSales);
+  const cards = document.querySelectorAll('#stats .stat-card .num');
+  cards[0].textContent = products.length;
+  cards[1].textContent = orders.length;
+  cards[2].textContent = pending;
+  cards[3].textContent = delivered;
+  cards[4].textContent = cancelled;
+  cards[5].textContent = formatINR(totalSales);
+  cards[6].textContent = formatINR(todaysSales);
+  cards[7].textContent = customers.length;
+  cards[8].textContent = outOfStock;
 
   // ---- Retail stats: purchase value, gross profit, inventory value, low stock ----
   const costs = await fetchAllProductCosts();

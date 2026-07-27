@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Suppliers — ShopInHand Admin</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="../assets/logo.jpg">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div class="admin-shell">
+  <nav class="admin-nav" id="admin-nav-slot"></nav>
+  <main class="admin-main">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <h2 style="color:var(--navy);margin-top:0">Suppliers</h2>
+      <button class="btn" id="add-sup-btn">+ Add Supplier</button>
+    </div>
+    <p style="font-size:13px;color:#4b5673;margin-top:-8px">Yeh master list "Add Purchase" form mein dropdown ke roop mein use hogi — naam/GSTIN baar-baar type nahi karna padega.</p>
+    <table class="table">
+      <thead><tr><th>Name</th><th>GSTIN</th><th>Phone</th><th>Email</th><th>Address</th><th>Actions</th></tr></thead>
+      <tbody id="sup-tbody"><tr><td colspan="6">Loading…</td></tr></tbody>
+    </table>
+  </main>
+</div>
+
+<div class="modal-bg" id="sup-modal-bg">
+  <div class="modal">
+    <h3 id="sup-modal-title">Add Supplier</h3>
+    <form id="sup-form">
+      <input type="hidden" id="sup-id">
+      <div class="field"><label>Name</label><input type="text" id="sup-name" required></div>
+      <div class="two-col">
+        <div class="field"><label>GSTIN (optional)</label><input type="text" id="sup-gstin" maxlength="15"></div>
+        <div class="field"><label>Phone (optional)</label><input type="text" id="sup-phone"></div>
+      </div>
+      <div class="field"><label>Email (optional)</label><input type="email" id="sup-email"></div>
+      <div class="field"><label>Address (optional)</label><textarea id="sup-address" rows="2"></textarea></div>
+      <div style="display:flex;gap:10px;margin-top:16px">
+        <button type="button" class="btn btn-outline btn-block" id="sup-cancel">Cancel</button>
+        <button type="submit" class="btn btn-block">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script type="module">
+import { requireAdmin, renderAdminNav } from '../js/admin-guard.js';
+import { showToast, escapeHtml, fetchSuppliers, addSupplier, updateSupplier, deleteSupplier } from '../js/store.js';
+
+await requireAdmin();
+renderAdminNav('suppliers');
+
+const tbody = document.getElementById('sup-tbody');
+const modalBg = document.getElementById('sup-modal-bg');
+const form = document.getElementById('sup-form');
+let suppliers = [];
+
+async function load() {
+  suppliers = await fetchSuppliers();
+  if (suppliers.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6">Koi supplier nahi hai. "+ Add Supplier" se shuru karein.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = suppliers.map(s => `
+    <tr>
+      <td>${escapeHtml(s.name)}</td>
+      <td>${escapeHtml(s.gstin) || '—'}</td>
+      <td>${escapeHtml(s.phone) || '—'}</td>
+      <td>${escapeHtml(s.email) || '—'}</td>
+      <td style="font-size:13px;color:#4b5673">${escapeHtml(s.address) || '—'}</td>
+      <td>
+        <button class="icon-btn edit-sup" data-id="${s.id}">Edit</button>
+        <button class="icon-btn danger delete-sup" data-id="${s.id}">Delete</button>
+      </td>
+    </tr>`).join('');
+  tbody.querySelectorAll('.edit-sup').forEach(btn => btn.addEventListener('click', () => openModal(suppliers.find(s => s.id === btn.dataset.id))));
+  tbody.querySelectorAll('.delete-sup').forEach(btn => btn.addEventListener('click', async () => {
+    if (!confirm('Yeh supplier delete karna hai?')) return;
+    await deleteSupplier(btn.dataset.id);
+    showToast('Supplier delete ho gaya');
+    load();
+  }));
+}
+
+function openModal(s = null) {
+  form.reset();
+  document.getElementById('sup-modal-title').textContent = s ? 'Edit Supplier' : 'Add Supplier';
+  document.getElementById('sup-id').value = s ? s.id : '';
+  document.getElementById('sup-name').value = s ? s.name : '';
+  document.getElementById('sup-gstin').value = s ? s.gstin : '';
+  document.getElementById('sup-phone').value = s ? s.phone : '';
+  document.getElementById('sup-email').value = s ? s.email : '';
+  document.getElementById('sup-address').value = s ? s.address : '';
+  modalBg.classList.add('open');
+}
+document.getElementById('add-sup-btn').addEventListener('click', () => openModal());
+document.getElementById('sup-cancel').addEventListener('click', () => modalBg.classList.remove('open'));
+modalBg.addEventListener('click', (e) => { if (e.target === modalBg) modalBg.classList.remove('open'); });
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const saveBtn = e.target.querySelector('button[type="submit"]');
+  const id = document.getElementById('sup-id').value;
+  const payload = {
+    name: document.getElementById('sup-name').value.trim(),
+    gstin: document.getElementById('sup-gstin').value.trim(),
+    phone: document.getElementById('sup-phone').value.trim(),
+    email: document.getElementById('sup-email').value.trim(),
+    address: document.getElementById('sup-address').value.trim()
+  };
+  try {
+    saveBtn.disabled = true;
+    if (id) await updateSupplier(id, payload);
+    else await addSupplier(payload);
+    showToast('Supplier save ho gaya');
+    modalBg.classList.remove('open');
+    load();
+  } catch (err) {
+    alert('Error: ' + err.message);
+  } finally {
+    saveBtn.disabled = false;
+  }
+});
+
+load().catch(err => { tbody.innerHTML = `<tr><td colspan="6" style="color:#D93025">Error: ${err.message}</td></tr>`; });
+</script>
+</body>
+</html>

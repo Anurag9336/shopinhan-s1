@@ -20,9 +20,13 @@
         <option value="">All</option>
         <option value="pending">Pending</option>
         <option value="paid">Paid</option>
+        <option value="confirmed">Confirmed</option>
+        <option value="packed">Packed</option>
         <option value="shipped">Shipped</option>
         <option value="delivered">Delivered</option>
         <option value="cancelled">Cancelled</option>
+        <option value="returned">Returned</option>
+        <option value="refund_requested">Refund Requested</option>
       </select>
     </div>
     <table class="table">
@@ -65,7 +69,7 @@ function render() {
       <td>${o.paymentMethod === 'COD' ? 'COD' : 'Online'}</td>
       <td>
         <select class="status-select" data-id="${o.id}" style="padding:6px 8px;border:1.5px solid var(--line);border-radius:6px;font-size:12px">
-          ${['pending','paid','shipped','delivered','cancelled'].map(s => `<option value="${s}" ${o.status===s?'selected':''}>${s}</option>`).join('')}
+          ${['pending','paid','confirmed','packed','shipped','delivered','cancelled','returned','refund_requested'].map(s => `<option value="${s}" ${o.status===s?'selected':''}>${s}</option>`).join('')}
         </select>
       </td>
       <td><a href="../invoice.html?id=${o.id}" target="_blank" style="color:var(--navy);font-weight:700">📄 View</a></td>

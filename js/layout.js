@@ -75,5 +75,5 @@ export async function renderCategoryStrip(categories, activeCategory = '') {
   const wrap = document.getElementById('cat-strip-inner');
   if (!wrap) return;
   wrap.innerHTML = `<a href="index.html" class="${activeCategory==='' ? 'active':''}">All</a>` +
-    categories.map(c => `<a href="index.html?category=${encodeURIComponent(c)}" class="${activeCategory===c ? 'active':''}">${c}</a>`).join('');
+    categories.map(c => `<a href="index.html?category=${encodeURIComponent(c.name)}" class="${activeCategory===c.name ? 'active':''}">${c.name}</a>`).join('');
 }

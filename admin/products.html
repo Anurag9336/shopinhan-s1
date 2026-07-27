@@ -8,6 +8,7 @@
 <link rel="icon" href="../assets/logo.jpg">
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
 <div class="admin-shell">
@@ -15,15 +16,22 @@
   <main class="admin-main">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
       <h2 style="color:var(--navy);margin:0">Products</h2>
-      <button class="btn" id="add-btn">+ Add Product</button>
+      <div style="display:flex;gap:10px">
+        <button class="btn btn-outline" id="bulk-upload-btn">📤 Bulk Upload (Excel)</button>
+        <button class="btn" id="add-btn">+ Add Product</button>
+      </div>
     </div>
+    <input type="file" id="bulk-file-input" accept=".xlsx,.xls,.csv" style="display:none">
     <p style="font-size:13px;color:#4b5673;margin-top:-10px">
       Stock badhane ke liye <a href="inventory.html" style="color:var(--navy);font-weight:700">Inventory → Add Purchase</a> use karein
       — yahan se sirf naya product banate waqt opening stock set hota hai.
     </p>
+    <div id="bulk-delete-bar" style="display:none;margin-bottom:10px">
+      <button class="btn-outline" id="bulk-delete-btn" style="color:var(--danger);border-color:var(--danger)">🗑️ Delete Selected (<span id="bulk-count">0</span>)</button>
+    </div>
     <table class="table">
-      <thead><tr><th>Image</th><th>Name</th><th>Category</th><th>Purchase Cost</th><th>Selling Price</th><th>GST%</th><th>Margin</th><th>Stock</th><th>Min Stock</th><th>Actions</th></tr></thead>
-      <tbody id="products-tbody"><tr><td colspan="10">Loading…</td></tr></tbody>
+      <thead><tr><th><input type="checkbox" id="select-all"></th><th>Image</th><th>Name</th><th>Category</th><th>Brand</th><th>Purchase Cost</th><th>Selling Price</th><th>GST%</th><th>Margin</th><th>Stock</th><th>Min Stock</th><th>Actions</th></tr></thead>
+      <tbody id="products-tbody"><tr><td colspan="12">Loading…</td></tr></tbody>
     </table>
   </main>
 </div>
@@ -35,14 +43,29 @@
       <input type="hidden" id="p-id">
       <div class="field"><label>Product Name</label><input type="text" id="p-name" required></div>
       <div class="two-col">
-        <div class="field"><label>Category</label><input type="text" id="p-category" placeholder="e.g. Pens" required></div>
+        <div class="field"><label>Category</label>
+          <select id="p-category-id"><option value="">— Select category —</option></select>
+          <p style="font-size:11px;color:#8a93a6;margin:3px 0 0">Naya category chahiye to pehle <a href="categories.html">Categories</a> page se bana lein.</p>
+        </div>
+        <div class="field"><label>Brand (optional)</label>
+          <select id="p-brand-id"><option value="">— None —</option></select>
+        </div>
+      </div>
+      <div class="two-col">
         <div class="field"><label>SKU (optional)</label><input type="text" id="p-sku"></div>
+        <div class="field"><label>Barcode (optional)</label><input type="text" id="p-barcode" placeholder="e.g. 8901234567890"></div>
       </div>
       <div class="two-col">
         <div class="field"><label>Selling Price (₹) — customer isse pay karega</label><input type="number" id="p-price" min="0" step="1" required></div>
         <div class="field"><label>MRP (₹, optional)</label><input type="number" id="p-mrp" min="0" step="1"></div>
       </div>
       <div class="field"><label>Minimum Stock (low-stock alert threshold)</label><input type="number" id="p-minstock" min="0" step="1" value="5" required></div>
+      <div class="two-col">
+        <div class="field"><label>Discount % (optional, shown to customer)</label><input type="number" id="p-discount" min="0" max="100" step="0.01" value="0"></div>
+        <div class="field" style="display:flex;align-items:flex-end;padding-bottom:8px">
+          <label><input type="checkbox" id="p-featured" style="width:auto;margin-right:6px">⭐ Featured Product (homepage pe highlight hoga)</label>
+        </div>
+      </div>
       <div class="two-col">
         <div class="field"><label>GST Rate (%)</label>
           <select id="p-gst-rate">
@@ -82,10 +105,16 @@
       </div>
 
       <div class="field">
-        <label>Product Image</label>
+        <label>Main Product Image</label>
         <input type="file" id="p-image-file" accept="image/*">
         <p style="font-size:12px;color:#8a93a6;margin:4px 0 4px">Camera se photo khींच sakte ho ya gallery se choose kar sakte ho. Ya neeche seedha URL bhi de sakte ho:</p>
         <input type="url" id="p-image" placeholder="https://...">
+      </div>
+      <div class="field" id="gallery-block" style="display:none">
+        <label>Additional Images (gallery)</label>
+        <div id="gallery-list" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px"></div>
+        <input type="file" id="p-gallery-file" accept="image/*" multiple>
+        <p style="font-size:12px;color:#8a93a6;margin:4px 0 0">Ek se zyada images select kar sakte ho (multi-select). Save ke baad turant upload ho jaayengi.</p>
       </div>
       <div class="field"><label>Description</label><textarea id="p-description" rows="3"></textarea></div>
       <div style="display:flex;gap:10px;margin-top:16px">
@@ -98,7 +127,7 @@
 
 <script type="module">
 import { requireAdmin, renderAdminNav } from '../js/admin-guard.js';
-import { formatINR, showToast, recordPurchase, fetchAllProductCosts, fetchProducts, addProduct, updateProduct, deleteProduct, newProductId, uploadFile, escapeHtml } from '../js/store.js';
+import { formatINR, showToast, recordPurchase, fetchAllProductCosts, fetchProducts, addProduct, updateProduct, deleteProduct, bulkDeleteProducts, newProductId, uploadFile, escapeHtml, fetchCategories, addCategory, fetchBrands, addBrand, fetchProductImages, addProductImage, deleteProductImage } from '../js/store.js';
 
 await requireAdmin();
 renderAdminNav('products');
@@ -108,14 +137,34 @@ const modalBg = document.getElementById('modal-bg');
 const form = document.getElementById('product-form');
 const openingBlock = document.getElementById('opening-stock-block');
 const lockedBlock = document.getElementById('locked-stock-block');
+const galleryBlock = document.getElementById('gallery-block');
+const galleryList = document.getElementById('gallery-list');
 let products = [];
 let costs = {};
+let categories = [];
+let categoriesById = {};
+let brands = [];
+let brandsById = {};
+let editingProductId = null;
+let selectedIds = new Set();
 
 async function load() {
   products = await fetchProducts();
   costs = await fetchAllProductCosts();
+  categories = await fetchCategories();
+  categoriesById = {}; categories.forEach(c => categoriesById[c.id] = c);
+  document.getElementById('p-category-id').innerHTML = '<option value="">— Select category —</option>' +
+    categories.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
+
+  brands = await fetchBrands();
+  brandsById = {}; brands.forEach(b => brandsById[b.id] = b);
+  document.getElementById('p-brand-id').innerHTML = '<option value="">— None —</option>' +
+    brands.map(b => `<option value="${b.id}">${escapeHtml(b.name)}</option>`).join('');
+
+  selectedIds.clear(); updateBulkBar();
+
   if (products.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="10">Koi product nahi hai. "+ Add Product" se shuru karein.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="12">Koi product nahi hai. "+ Add Product" se shuru karein.</td></tr>';
     return;
   }
   tbody.innerHTML = products.map(p => {
@@ -123,13 +172,17 @@ async function load() {
     const margin = p.price - cost;
     const minStock = p.minStock ?? 5;
     const lowStock = Number(p.stock || 0) <= minStock;
+    const catName = p.categoryId && categoriesById[p.categoryId] ? categoriesById[p.categoryId].name : (p.category || '-');
+    const brandName = p.brandId && brandsById[p.brandId] ? brandsById[p.brandId].name : '—';
     return `
     <tr>
+      <td><input type="checkbox" class="row-select" data-id="${p.id}"></td>
       <td><img src="${p.image || '../assets/placeholder.svg'}" alt=""></td>
-      <td>${escapeHtml(p.name)}</td>
-      <td>${escapeHtml(p.category) || '-'}</td>
+      <td>${escapeHtml(p.name)} ${p.featured ? '⭐' : ''}</td>
+      <td>${escapeHtml(catName)}</td>
+      <td>${escapeHtml(brandName)}</td>
       <td>${cost ? formatINR(cost) : '—'}</td>
-      <td>${formatINR(p.price)}</td>
+      <td>${formatINR(p.price)} ${p.discountPercent > 0 ? `<span style="color:var(--success);font-size:12px">(-${p.discountPercent}%)</span>` : ''}</td>
       <td>${p.gstRate ?? 0}%</td>
       <td style="color:${margin>=0 ? 'var(--success)':'var(--danger)'}">${cost ? formatINR(margin) : '—'}</td>
       <td>${p.stock ?? 0} ${lowStock ? '<span class="badge-stock" style="margin-left:6px">Low</span>' : ''}</td>
@@ -143,22 +196,50 @@ async function load() {
 
   tbody.querySelectorAll('.edit-btn').forEach(b => b.addEventListener('click', () => openModal(products.find(p => p.id === b.dataset.id))));
   tbody.querySelectorAll('.del-btn').forEach(b => b.addEventListener('click', () => removeProduct(b.dataset.id)));
+  tbody.querySelectorAll('.row-select').forEach(cb => cb.addEventListener('change', () => {
+    if (cb.checked) selectedIds.add(cb.dataset.id); else selectedIds.delete(cb.dataset.id);
+    updateBulkBar();
+  }));
 }
+
+function updateBulkBar() {
+  document.getElementById('bulk-delete-bar').style.display = selectedIds.size > 0 ? '' : 'none';
+  document.getElementById('bulk-count').textContent = selectedIds.size;
+  document.getElementById('select-all').checked = selectedIds.size > 0 && selectedIds.size === products.length;
+}
+document.getElementById('select-all').addEventListener('change', (e) => {
+  selectedIds.clear();
+  if (e.target.checked) products.forEach(p => selectedIds.add(p.id));
+  tbody.querySelectorAll('.row-select').forEach(cb => { cb.checked = e.target.checked; });
+  updateBulkBar();
+});
+document.getElementById('bulk-delete-btn').addEventListener('click', async () => {
+  if (!confirm(`${selectedIds.size} products delete karne hain? Yeh undo nahi ho sakta.`)) return;
+  await bulkDeleteProducts([...selectedIds]);
+  showToast(`${selectedIds.size} products delete ho gaye`);
+  load();
+});
 
 function openModal(p = null) {
   document.getElementById('modal-title').textContent = p ? 'Edit Product' : 'Add Product';
   document.getElementById('p-id').value = p?.id || '';
+  editingProductId = p?.id || null;
   document.getElementById('p-name').value = p?.name || '';
-  document.getElementById('p-category').value = p?.category || '';
+  document.getElementById('p-category-id').value = p?.categoryId || '';
+  document.getElementById('p-brand-id').value = p?.brandId || '';
   document.getElementById('p-sku').value = p?.sku || '';
+  document.getElementById('p-barcode').value = p?.barcode || '';
   document.getElementById('p-price').value = p?.price ?? '';
   document.getElementById('p-mrp').value = p?.mrp ?? '';
   document.getElementById('p-minstock').value = p?.minStock ?? 5;
+  document.getElementById('p-discount').value = p?.discountPercent ?? 0;
+  document.getElementById('p-featured').checked = p?.featured ?? false;
   document.getElementById('p-gst-rate').value = p?.gstRate ?? 12;
   document.getElementById('p-hsn').value = p?.hsnCode || '';
   document.getElementById('p-image').value = p?.image || '';
   document.getElementById('p-image-file').value = '';
   document.getElementById('p-description').value = p?.description || '';
+  document.getElementById('p-gallery-file').value = '';
 
   if (p) {
     // Editing an existing product — stock is locked, managed via Inventory ledger only.
@@ -168,6 +249,8 @@ function openModal(p = null) {
     document.getElementById('p-cost').required = false;
     document.getElementById('locked-stock-val').textContent = p.stock ?? 0;
     document.getElementById('locked-cost-val').textContent = costs[p.id] ? formatINR(costs[p.id]) : '—';
+    galleryBlock.style.display = '';
+    loadGallery(p.id);
   } else {
     openingBlock.style.display = '';
     lockedBlock.style.display = 'none';
@@ -178,10 +261,39 @@ function openModal(p = null) {
     document.getElementById('p-supplier').value = '';
     document.getElementById('p-invoice').value = '';
     document.getElementById('p-purchase-date').value = new Date().toISOString().slice(0, 10);
+    galleryBlock.style.display = 'none';
+    galleryList.innerHTML = '';
   }
   modalBg.classList.add('open');
 }
 function closeModal() { modalBg.classList.remove('open'); }
+
+async function loadGallery(productId) {
+  galleryList.innerHTML = 'Loading…';
+  const images = await fetchProductImages(productId);
+  if (images.length === 0) { galleryList.innerHTML = '<p style="font-size:12px;color:#8a93a6">Abhi koi extra image nahi hai.</p>'; return; }
+  galleryList.innerHTML = images.map(img => `
+    <div style="position:relative" data-img-id="${img.id}">
+      <img src="${img.url}" style="width:64px;height:64px;object-fit:cover;border-radius:8px;border:1.5px solid var(--line)">
+      <button type="button" class="gallery-del" data-id="${img.id}" style="position:absolute;top:-6px;right:-6px;background:var(--danger);color:#fff;border:none;border-radius:50%;width:20px;height:20px;font-size:12px;cursor:pointer">✕</button>
+    </div>`).join('');
+  galleryList.querySelectorAll('.gallery-del').forEach(btn => btn.addEventListener('click', async () => {
+    await deleteProductImage(btn.dataset.id);
+    loadGallery(productId);
+  }));
+}
+
+document.getElementById('p-gallery-file').addEventListener('change', async (e) => {
+  if (!editingProductId || !e.target.files.length) return;
+  showToast('Images upload ho rahi hain…');
+  for (const file of e.target.files) {
+    const url = await uploadFile('product-images', editingProductId, file);
+    await addProductImage(editingProductId, url);
+  }
+  e.target.value = '';
+  loadGallery(editingProductId);
+  showToast('Gallery images add ho gayi');
+});
 
 document.getElementById('add-btn').addEventListener('click', () => openModal());
 document.getElementById('cancel-btn').addEventListener('click', closeModal);
@@ -192,10 +304,17 @@ form.addEventListener('submit', async (e) => {
   const saveBtn = form.querySelector('button[type="submit"]');
   const id = document.getElementById('p-id').value;
   const imageFile = document.getElementById('p-image-file').files[0];
+  const categoryId = document.getElementById('p-category-id').value || null;
+  const categoryName = categoryId && categoriesById[categoryId] ? categoriesById[categoryId].name : null;
   const data = {
     name: document.getElementById('p-name').value.trim(),
-    category: document.getElementById('p-category').value.trim(),
+    category: categoryName,
+    categoryId,
+    brandId: document.getElementById('p-brand-id').value || null,
     sku: document.getElementById('p-sku').value.trim(),
+    barcode: document.getElementById('p-barcode').value.trim(),
+    discountPercent: Number(document.getElementById('p-discount').value || 0),
+    featured: document.getElementById('p-featured').checked,
     price: Number(document.getElementById('p-price').value),
     mrp: document.getElementById('p-mrp').value ? Number(document.getElementById('p-mrp').value) : null,
     minStock: Number(document.getElementById('p-minstock').value || 5),
@@ -246,7 +365,85 @@ async function removeProduct(id) {
   load();
 }
 
-load().catch(err => { tbody.innerHTML = `<tr><td colspan="8" style="color:#D93025">Error: ${err.message}</td></tr>`; });
+// ---------------- Bulk Upload (Excel/CSV) ----------------
+// Expected columns (case-insensitive header row): Name, Category, SKU,
+// Price, MRP, GST Rate, HSN Code, Stock, Cost Price, Description, Image URL
+document.getElementById('bulk-upload-btn').addEventListener('click', () => {
+  alert('Excel/CSV file mein ye columns honi chahiye (pehli row header):\nName, Category, SKU, Price, MRP, GST Rate, HSN Code, Stock, Cost Price, Description, Image URL, Brand (optional), Barcode (optional), Discount (optional)\n\n"Category" aur "Brand" mein jo naam doge, agar wo pehle se nahi hai to automatically ban jayenge.');
+  document.getElementById('bulk-file-input').click();
+});
+
+document.getElementById('bulk-file-input').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const btn = document.getElementById('bulk-upload-btn');
+  try {
+    btn.disabled = true;
+    btn.textContent = 'Reading file…';
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: 'array' });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+    if (rows.length === 0) { alert('File mein koi data nahi mila.'); return; }
+
+    const norm = (row, keys) => { for (const k of keys) { for (const rk of Object.keys(row)) { if (rk.trim().toLowerCase() === k) return row[rk]; } } return ''; };
+
+    let success = 0, failed = 0;
+    for (let i = 0; i < rows.length; i++) {
+      btn.textContent = `Uploading ${i + 1}/${rows.length}…`;
+      const row = rows[i];
+      try {
+        const name = String(norm(row, ['name', 'product name'])).trim();
+        if (!name) { failed++; continue; }
+        const categoryName = String(norm(row, ['category'])).trim();
+        let categoryId = null;
+        if (categoryName) {
+          let cat = categories.find(c => c.name.toLowerCase() === categoryName.toLowerCase());
+          if (!cat) { cat = await addCategory({ name: categoryName }); categories.push({ id: cat.id, name: cat.name, image: null, parentId: null }); }
+          categoryId = cat.id;
+        }
+        const price = Number(norm(row, ['price', 'selling price'])) || 0;
+        const mrp = norm(row, ['mrp']) ? Number(norm(row, ['mrp'])) : null;
+        const gstRate = Number(norm(row, ['gst rate', 'gst'])) || 0;
+        const hsnCode = String(norm(row, ['hsn code', 'hsn'])).trim();
+        const sku = String(norm(row, ['sku'])).trim();
+        const description = String(norm(row, ['description'])).trim();
+        const image = String(norm(row, ['image url', 'image'])).trim();
+        const stock = Number(norm(row, ['stock', 'opening stock'])) || 0;
+        const costPrice = Number(norm(row, ['cost price', 'purchase cost'])) || 0;
+        const barcode = String(norm(row, ['barcode'])).trim();
+        const discountPercent = Number(norm(row, ['discount', 'discount %', 'discount percent'])) || 0;
+        const brandName = String(norm(row, ['brand'])).trim();
+        let brandId = null;
+        if (brandName) {
+          let b = brands.find(x => x.name.toLowerCase() === brandName.toLowerCase());
+          if (!b) { b = await addBrand({ name: brandName }); brands.push({ id: b.id, name: b.name, logo: null, description: '', active: true }); }
+          brandId = b.id;
+        }
+
+        const newId = newProductId();
+        await addProduct({ id: newId, name, category: categoryName || null, categoryId, sku, price, mrp, gstRate, hsnCode, image, description, stock: 0, barcode, discountPercent, brandId });
+        if (stock > 0) {
+          await recordPurchase({ productId: newId, qty: stock, rate: costPrice, note: 'Bulk upload — opening stock' });
+        }
+        success++;
+      } catch (err) {
+        console.error('Row failed:', row, err);
+        failed++;
+      }
+    }
+    alert(`Bulk upload complete!\n✅ ${success} products add hue\n${failed > 0 ? `❌ ${failed} fail hue (console check karein)` : ''}`);
+    load();
+  } catch (err) {
+    alert('File padhne mein error: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '📤 Bulk Upload (Excel)';
+    e.target.value = '';
+  }
+});
+
+load().catch(err => { tbody.innerHTML = `<tr><td colspan="12" style="color:#D93025">Error: ${err.message}</td></tr>`; });
 </script>
 </body>
 </html>

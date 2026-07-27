@@ -34,9 +34,12 @@ function mapProduct(row) {
     id: row.id, name: row.name, price: Number(row.price), image: row.image,
     stock: Number(row.stock || 0), gstRate: Number(row.gst_rate || 0),
     hsnCode: row.hsn_code || '', category: row.category || null,
+    categoryId: row.category_id || null,
     minStock: Number(row.min_stock ?? 5), sku: row.sku || '',
     mrp: row.mrp === null || row.mrp === undefined ? null : Number(row.mrp),
     description: row.description || '',
+    barcode: row.barcode || '', discountPercent: Number(row.discount_percent || 0),
+    featured: !!row.featured, brandId: row.brand_id || null,
     createdAt: row.created_at, updatedAt: row.updated_at
   };
 }
@@ -144,8 +147,27 @@ export async function fetchProduct(id) {
   return mapProduct(data);
 }
 export async function fetchCategories() {
-  const products = await fetchProducts();
-  return [...new Set(products.map(p => p.category).filter(Boolean))];
+  const { data, error } = await supabase.from('categories').select('*').order('name');
+  throwIfError(error);
+  return (data || []).map(c => ({ id: c.id, name: c.name, image: c.image, parentId: c.parent_id }));
+}
+export async function addCategory({ name, image = null, parentId = null }) {
+  const id = newProductId();
+  const { data, error } = await supabase.from('categories').insert({ id, name, image, parent_id: parentId }).select().single();
+  throwIfError(error);
+  return data;
+}
+export async function updateCategory(id, { name, image, parentId }) {
+  const patch = {};
+  if (name !== undefined) patch.name = name;
+  if (image !== undefined) patch.image = image;
+  if (parentId !== undefined) patch.parent_id = parentId;
+  const { error } = await supabase.from('categories').update(patch).eq('id', id);
+  throwIfError(error);
+}
+export async function deleteCategory(id) {
+  const { error } = await supabase.from('categories').delete().eq('id', id);
+  throwIfError(error);
 }
 
 // ---------------- Admin: product CRUD (used by admin/products.html) ---
@@ -158,8 +180,10 @@ export async function addProduct(data) {
   const { data: row, error } = await supabase.from('products').insert({
     id: data.id || newProductId(), name: data.name, price: data.price, image: data.image || null,
     stock: data.stock ?? 0, gst_rate: data.gstRate ?? 0, hsn_code: data.hsnCode || '',
-    category: data.category || null, min_stock: data.minStock ?? 5,
-    sku: data.sku || '', mrp: data.mrp ?? null, description: data.description || ''
+    category: data.category || null, category_id: data.categoryId || null, min_stock: data.minStock ?? 5,
+    sku: data.sku || '', mrp: data.mrp ?? null, description: data.description || '',
+    barcode: data.barcode || '', discount_percent: data.discountPercent ?? 0,
+    featured: data.featured ?? false, brand_id: data.brandId || null
   }).select().single();
   throwIfError(error);
   return mapProduct(row);
@@ -173,16 +197,96 @@ export async function updateProduct(id, data) {
   if ('gstRate' in data) patch.gst_rate = data.gstRate;
   if ('hsnCode' in data) patch.hsn_code = data.hsnCode;
   if ('category' in data) patch.category = data.category;
+  if ('categoryId' in data) patch.category_id = data.categoryId;
   if ('minStock' in data) patch.min_stock = data.minStock;
   if ('sku' in data) patch.sku = data.sku;
   if ('mrp' in data) patch.mrp = data.mrp;
   if ('description' in data) patch.description = data.description;
+  if ('barcode' in data) patch.barcode = data.barcode;
+  if ('discountPercent' in data) patch.discount_percent = data.discountPercent;
+  if ('featured' in data) patch.featured = data.featured;
+  if ('brandId' in data) patch.brand_id = data.brandId;
   patch.updated_at = new Date().toISOString();
   const { error } = await supabase.from('products').update(patch).eq('id', id);
   throwIfError(error);
 }
 export async function deleteProduct(id) {
   const { error } = await supabase.from('products').delete().eq('id', id);
+  throwIfError(error);
+}
+export async function bulkDeleteProducts(ids) {
+  const { error } = await supabase.from('products').delete().in('id', ids);
+  throwIfError(error);
+}
+
+// ---------------- Admin: Brands ----------------
+export async function fetchBrands() {
+  const { data, error } = await supabase.from('brands').select('*').order('name');
+  throwIfError(error);
+  return (data || []).map(b => ({ id: b.id, name: b.name, logo: b.logo, description: b.description || '', active: !!b.active }));
+}
+export async function addBrand({ name, logo = null, description = '', active = true }) {
+  const id = newProductId();
+  const { data, error } = await supabase.from('brands').insert({ id, name, logo, description, active }).select().single();
+  throwIfError(error);
+  return data;
+}
+export async function updateBrand(id, patch) {
+  const dbPatch = {};
+  if ('name' in patch) dbPatch.name = patch.name;
+  if ('logo' in patch) dbPatch.logo = patch.logo;
+  if ('description' in patch) dbPatch.description = patch.description;
+  if ('active' in patch) dbPatch.active = patch.active;
+  const { error } = await supabase.from('brands').update(dbPatch).eq('id', id);
+  throwIfError(error);
+}
+export async function deleteBrand(id) {
+  const { error } = await supabase.from('brands').delete().eq('id', id);
+  throwIfError(error);
+}
+
+// ---------------- Admin: Suppliers (master list) ----------------
+export async function fetchSuppliers() {
+  const { data, error } = await supabase.from('suppliers').select('*').order('name');
+  throwIfError(error);
+  return (data || []).map(s => ({ id: s.id, name: s.name, gstin: s.gstin || '', phone: s.phone || '', email: s.email || '', address: s.address || '' }));
+}
+export async function addSupplier({ name, gstin = '', phone = '', email = '', address = '' }) {
+  const id = newProductId();
+  const { data, error } = await supabase.from('suppliers').insert({ id, name, gstin, phone, email, address }).select().single();
+  throwIfError(error);
+  return data;
+}
+export async function updateSupplier(id, patch) {
+  const { error } = await supabase.from('suppliers').update(patch).eq('id', id);
+  throwIfError(error);
+}
+export async function deleteSupplier(id) {
+  const { error } = await supabase.from('suppliers').delete().eq('id', id);
+  throwIfError(error);
+}
+
+// ---------------- Admin: Site Settings ----------------
+export async function fetchSiteSettings() {
+  const { data, error } = await supabase.from('site_settings').select('*').eq('id', 1).maybeSingle();
+  throwIfError(error);
+  if (!data) return null;
+  return {
+    storeName: data.store_name, tagline: data.tagline, phone: data.phone, whatsapp: data.whatsapp,
+    email: data.email, address: data.address, gstin: data.gstin, sellerState: data.seller_state,
+    bankAccountName: data.bank_account_name, bankAccountNo: data.bank_account_no,
+    bankIfsc: data.bank_ifsc, bankName: data.bank_name,
+    freeDeliveryAbove: Number(data.free_delivery_above), deliveryFee: Number(data.delivery_fee)
+  };
+}
+export async function updateSiteSettings(patch) {
+  const dbPatch = { updated_at: new Date().toISOString() };
+  const map = { storeName: 'store_name', tagline: 'tagline', phone: 'phone', whatsapp: 'whatsapp', email: 'email',
+    address: 'address', gstin: 'gstin', sellerState: 'seller_state', bankAccountName: 'bank_account_name',
+    bankAccountNo: 'bank_account_no', bankIfsc: 'bank_ifsc', bankName: 'bank_name',
+    freeDeliveryAbove: 'free_delivery_above', deliveryFee: 'delivery_fee' };
+  Object.entries(patch).forEach(([k, v]) => { if (map[k]) dbPatch[map[k]] = v; });
+  const { error } = await supabase.from('site_settings').update(dbPatch).eq('id', 1);
   throwIfError(error);
 }
 
@@ -219,16 +323,12 @@ export async function placeOrder({ items, customer, paymentMethod, razorpay }) {
   return data.orderId;
 }
 export async function fetchOrderById(id) {
-  const { data, error } = await supabase.from('orders').select('*, order_items(*)').eq('id', id).maybeSingle();
+  const { data, error } = await supabase.rpc('get_order_by_id', { p_id: id });
   throwIfError(error);
-  return mapOrder(data);
+  return data ? mapOrder(data) : null;
 }
 export async function fetchOrdersByPhone(phone) {
-  const { data, error } = await supabase
-    .from('orders')
-    .select('*, order_items(*)')
-    .eq('customer_phone', phone)
-    .order('created_at', { ascending: false });
+  const { data, error } = await supabase.rpc('get_orders_by_phone', { p_phone: phone });
   throwIfError(error);
   return (data || []).map(mapOrder);
 }
@@ -292,6 +392,38 @@ export async function recordAdjustment({ productId, delta, note }) {
   throwIfError(error);
 }
 
+export async function recordReturn({ productId, qty, rate = 0, note = '' }) {
+  if (qty <= 0) throw new Error('Quantity 0 se zyada honi chahiye');
+  const { error } = await supabase.rpc('record_return', { p_product_id: productId, p_qty: qty, p_rate: rate, p_note: note });
+  throwIfError(error);
+}
+
+export async function fetchDashboardStats() {
+  const [products, orders] = await Promise.all([fetchProducts(), fetchAllOrders()]);
+  const today = new Date().toISOString().slice(0, 10);
+  const todaysOrders = orders.filter(o => (o.createdAt || '').slice(0, 10) === today);
+  const outOfStock = products.filter(p => Number(p.stock || 0) === 0).length;
+  const lowStock = products.filter(p => Number(p.stock || 0) > 0 && Number(p.stock || 0) <= (p.minStock ?? 5)).length;
+
+  const salesCount = {};
+  orders.filter(o => o.status !== 'cancelled').forEach(o => {
+    o.items.forEach(i => { salesCount[i.name] = (salesCount[i.name] || 0) + i.qty; });
+  });
+  const topSelling = Object.entries(salesCount).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([name, qty]) => ({ name, qty }));
+
+  return {
+    totalSales: orders.filter(o => o.status !== 'cancelled').reduce((s, o) => s + o.amount, 0),
+    todaysSales: todaysOrders.filter(o => o.status !== 'cancelled').reduce((s, o) => s + o.amount, 0),
+    totalOrders: orders.length,
+    pendingOrders: orders.filter(o => o.status === 'pending').length,
+    deliveredOrders: orders.filter(o => o.status === 'delivered').length,
+    cancelledOrders: orders.filter(o => o.status === 'cancelled').length,
+    totalProducts: products.length,
+    outOfStock, lowStock, topSelling,
+    recentOrders: orders.slice(0, 8)
+  };
+}
+
 export async function fetchStockMovements({ productId = null } = {}) {
   let q = supabase.from('stock_movements').select('*').order('created_at', { ascending: false });
   if (productId) q = q.eq('product_id', productId);
@@ -300,7 +432,40 @@ export async function fetchStockMovements({ productId = null } = {}) {
   return (data || []).map(mapMovement);
 }
 
-// ---------------- Formatting ----------------
+// ---------------- Admin: Customers (aggregated from orders — no separate signup) ---
+export async function fetchCustomers() {
+  const orders = await fetchAllOrders();
+  const map = {};
+  orders.forEach(o => {
+    const phone = o.customer.phone;
+    if (!phone) return;
+    if (!map[phone]) {
+      map[phone] = { phone, name: o.customer.name, email: o.customer.email, totalOrders: 0, totalSpent: 0, lastOrderAt: o.createdAt, addresses: new Set() };
+    }
+    const c = map[phone];
+    c.totalOrders += 1;
+    if (o.status !== 'cancelled') c.totalSpent += o.amount;
+    if (new Date(o.createdAt) > new Date(c.lastOrderAt)) { c.lastOrderAt = o.createdAt; c.name = o.customer.name; }
+    c.addresses.add(`${o.customer.address}, ${o.customer.city}`);
+  });
+  return Object.values(map).map(c => ({ ...c, addresses: [...c.addresses] }))
+    .sort((a, b) => new Date(b.lastOrderAt) - new Date(a.lastOrderAt));
+}
+
+// ---------------- Admin: multiple product images (gallery) ----------
+export async function fetchProductImages(productId) {
+  const { data, error } = await supabase.from('product_images').select('*').eq('product_id', productId).order('sort_order');
+  throwIfError(error);
+  return (data || []).map(r => ({ id: r.id, url: r.url, sortOrder: r.sort_order }));
+}
+export async function addProductImage(productId, url, sortOrder = 0) {
+  const { error } = await supabase.from('product_images').insert({ product_id: productId, url, sort_order: sortOrder });
+  throwIfError(error);
+}
+export async function deleteProductImage(imageId) {
+  const { error } = await supabase.from('product_images').delete().eq('id', imageId);
+  throwIfError(error);
+}
 export function formatINR(n) {
   return '₹' + Number(n || 0).toLocaleString('en-IN');
 }
